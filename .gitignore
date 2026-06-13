@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdf
+*.mp4
+*.webm
+*.mkv
