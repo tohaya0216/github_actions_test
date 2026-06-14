@@ -315,13 +315,25 @@ def _frame_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 def enhance_tab_image(img: np.ndarray) -> Image.Image:
     """Enhance tab image for clean PDF output."""
+    mean_brightness = float(np.mean(img))
+
     pil_img = Image.fromarray(img)
     enhancer = ImageEnhance.Contrast(pil_img)
     pil_img = enhancer.enhance(2.0)
     pil_img = pil_img.filter(ImageFilter.SHARPEN)
     gray_arr = np.array(pil_img)
-    _, binary = cv2.threshold(gray_arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return Image.fromarray(binary)
+
+    # Only binarize if image is bright enough to be tab notation (light background)
+    # Dark images (video content) must not be binarized — they become solid black
+    if mean_brightness >= 100:
+        _, binary = cv2.threshold(gray_arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # If binarization produced >80% black pixels it's probably not tab — skip it
+        black_ratio = np.sum(binary == 0) / binary.size
+        if black_ratio < 0.80:
+            return Image.fromarray(binary)
+
+    # Fallback: return contrast-enhanced grayscale without binarization
+    return pil_img
 
 
 def create_pdf(
@@ -423,6 +435,82 @@ def create_pdf(
     print(f"PDF saved: {output_path} ({page_num} page(s))")
 
 
+def scan_video(
+    source: str,
+    output_dir: str = ".",
+) -> None:
+    """
+    Diagnostic mode: save annotated sample frames and print detected region.
+    Use this to find the correct --region coordinates before running extraction.
+    """
+    tmp_dir = None
+    video_path = source
+
+    if source.startswith("http://") or source.startswith("https://"):
+        tmp_dir = tempfile.mkdtemp(prefix="tab_scan_")
+        video_path = download_video(source, tmp_dir)
+
+    try:
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise RuntimeError(f"Cannot open video: {video_path}")
+
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        print(f"Video size: {w}×{h}px,  {total} frames")
+
+        positions = [0.1, 0.3, 0.5, 0.7]
+        detected_regions = []
+
+        for i, ratio in enumerate(positions):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(total * ratio))
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+            region = detect_tab_region(frame)
+            if region:
+                detected_regions.append(region)
+                x, y, rw, rh = region
+                cv2.rectangle(frame, (x, y), (x + rw, y + rh), (0, 255, 0), 3)
+                cv2.putText(frame, f"Detected: x={x} y={y} w={rw} h={rh}",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            else:
+                cv2.putText(frame, "No tab region detected",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+
+            # Draw horizontal guide lines every 10% of height
+            for pct in range(10, 100, 10):
+                gy = int(h * pct / 100)
+                cv2.line(frame, (0, gy), (w, gy), (100, 100, 255), 1)
+                cv2.putText(frame, f"y={gy}", (5, gy - 4),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 100, 255), 1)
+
+            out_path = os.path.join(output_dir, f"scan_frame_{i+1}.jpg")
+            cv2.imwrite(out_path, frame)
+            print(f"Saved: {out_path}  (region: {region})")
+
+        cap.release()
+
+        if detected_regions:
+            tops = sorted(r[1] for r in detected_regions)
+            bottoms = sorted(r[1] + r[3] for r in detected_regions)
+            med_y = tops[len(tops) // 2]
+            med_h = bottoms[len(bottoms) // 2] - med_y
+            print(f"\nSuggested --region: 0 {med_y} {w} {med_h}")
+            print(f"  → python3 tab_extractor.py <source> -o output.pdf --region 0 {med_y} {w} {med_h}")
+        else:
+            print("\nCould not auto-detect tab region.")
+            print("Open the saved scan_frame_*.jpg files, find where the tab notation is,")
+            print("and run with: --region X Y W H  (pixel coordinates of the tab area)")
+
+    finally:
+        if tmp_dir:
+            import shutil
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 def extract_tabs_from_video(
     source: str,
     output_pdf: str,
@@ -511,20 +599,31 @@ Examples:
         action="store_true",
         help="Keep downloaded video file after extraction",
     )
+    parser.add_argument(
+        "--scan",
+        action="store_true",
+        help=(
+            "Diagnostic mode: save annotated sample frames to help identify "
+            "the correct --region coordinates. No PDF is generated."
+        ),
+    )
 
     args = parser.parse_args()
     tab_region = tuple(args.region) if args.region else None
 
     try:
-        extract_tabs_from_video(
-            source=args.source,
-            output_pdf=args.output,
-            title=args.title,
-            tab_region=tab_region,
-            sample_interval=args.interval,
-            keep_video=args.keep_video,
-        )
-        print("Done!")
+        if args.scan:
+            scan_video(source=args.source, output_dir=".")
+        else:
+            extract_tabs_from_video(
+                source=args.source,
+                output_pdf=args.output,
+                title=args.title,
+                tab_region=tab_region,
+                sample_interval=args.interval,
+                keep_video=args.keep_video,
+            )
+            print("Done!")
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
