@@ -166,13 +166,20 @@ def detect_horizontal_scroll(
     return best_scroll
 
 
-def _is_tab_frame(gray: np.ndarray, min_brightness: float = 140.0) -> bool:
+def _is_tab_frame(gray: np.ndarray, min_brightness: float = 120.0) -> bool:
     """
     Return True if this region looks like a tab notation frame.
-    Tab frames have a light background (white paper/overlay).
-    Dark frames are performance video with no tab visible.
+    Rejects frames that are too dark overall OR contain large dark blobs
+    (camera footage / performance video bleeding into the tab region).
     """
-    return float(np.mean(gray)) >= min_brightness
+    if float(np.mean(gray)) < min_brightness:
+        return False
+    # Reject frames with large dark patches (> 25% pixels below 60)
+    # Tab notation has a light background; only string lines and numbers are dark
+    dark_ratio = float(np.sum(gray < 60)) / gray.size
+    if dark_ratio > 0.25:
+        return False
+    return True
 
 
 def _find_content_rows(gray: np.ndarray) -> tuple[int, int] | None:
@@ -207,15 +214,16 @@ def normalize_frame_heights(frames: list[np.ndarray]) -> list[np.ndarray]:
     tops = [b[0] for b in valid_bounds]
     bottoms = [b[1] for b in valid_bounds]
 
-    # Use median bounds so outlier frames don't affect the crop
-    med_top = int(np.median(tops))
-    med_bottom = int(np.median(bottoms))
+    # Use 10th/90th percentile so we are generous with content at the
+    # extremes (time signatures, ledger lines) while ignoring outlier frames
+    crop_top_base = int(np.percentile(tops, 10))
+    crop_bottom_base = int(np.percentile(bottoms, 90))
 
-    # Add padding
+    # Add generous padding to avoid clipping tall symbols (numbers, slurs)
     h = frames[0].shape[0]
-    pad = max(8, (med_bottom - med_top) // 6)
-    crop_top = max(0, med_top - pad)
-    crop_bottom = min(h, med_bottom + pad)
+    pad = max(15, (crop_bottom_base - crop_top_base) // 5)
+    crop_top = max(0, crop_top_base - pad)
+    crop_bottom = min(h, crop_bottom_base + pad)
 
     if crop_bottom <= crop_top:
         return frames
