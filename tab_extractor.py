@@ -159,14 +159,25 @@ def detect_horizontal_scroll(
     return max(0, scroll)
 
 
+def _is_tab_frame(gray: np.ndarray, min_brightness: float = 140.0) -> bool:
+    """
+    Return True if this region looks like a tab notation frame.
+    Tab frames have a light background (white paper/overlay).
+    Dark frames are performance video with no tab visible.
+    """
+    return float(np.mean(gray)) >= min_brightness
+
+
 def extract_tab_frames(
     video_path: str,
     tab_region: tuple[int, int, int, int] | None = None,
     sample_interval: float = 0.5,
     min_scroll_px: int = 5,
+    min_brightness: float = 140.0,
 ) -> tuple[list[np.ndarray], list[int]]:
     """
     Extract tab frames from video, tracking horizontal scroll offsets.
+    Skips frames where the region is too dark (no tab visible).
 
     Returns:
         (frames, offsets) where offsets[i] is the scroll from frames[i-1] to frames[i].
@@ -196,6 +207,7 @@ def extract_tab_frames(
     frames: list[np.ndarray] = []
     offsets: list[int] = []
     prev_gray: np.ndarray | None = None
+    skipped_dark = 0
     frame_idx = 0
 
     while frame_idx < total_frames:
@@ -213,6 +225,12 @@ def extract_tab_frames(
 
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
 
+        # Skip dark frames — they are performance video, not tab notation
+        if not _is_tab_frame(gray, min_brightness):
+            skipped_dark += 1
+            frame_idx += frame_step
+            continue
+
         if prev_gray is None:
             frames.append(gray.copy())
             offsets.append(0)
@@ -225,12 +243,12 @@ def extract_tab_frames(
                 prev_gray = gray.copy()
 
         progress = frame_idx / total_frames * 100
-        print(f"\r  Extracting: {progress:.1f}% ({len(frames)} frames, total scroll: {sum(offsets)}px)", end="", flush=True)
+        print(f"\r  Extracting: {progress:.1f}% ({len(frames)} frames, {skipped_dark} dark skipped)", end="", flush=True)
 
         frame_idx += frame_step
 
     cap.release()
-    print(f"\nExtracted {len(frames)} frames, total scroll: {sum(offsets)}px")
+    print(f"\nExtracted {len(frames)} frames ({skipped_dark} dark frames skipped)")
     return frames, offsets
 
 
@@ -518,6 +536,7 @@ def extract_tabs_from_video(
     tab_region: tuple[int, int, int, int] | None = None,
     sample_interval: float = 0.5,
     keep_video: bool = False,
+    min_brightness: float = 140.0,
 ) -> None:
     """
     Main entry point: download (if URL), extract tabs, generate PDF.
@@ -545,6 +564,7 @@ def extract_tabs_from_video(
             video_path,
             tab_region=tab_region,
             sample_interval=sample_interval,
+            min_brightness=min_brightness,
         )
 
         if not frames:
@@ -600,6 +620,15 @@ Examples:
         help="Keep downloaded video file after extraction",
     )
     parser.add_argument(
+        "--min-brightness",
+        type=float,
+        default=140.0,
+        help=(
+            "Minimum mean brightness (0-255) for a frame to be considered tab notation. "
+            "Darker frames are skipped as performance video. (default: 140)"
+        ),
+    )
+    parser.add_argument(
         "--scan",
         action="store_true",
         help=(
@@ -622,6 +651,7 @@ Examples:
                 tab_region=tab_region,
                 sample_interval=args.interval,
                 keep_video=args.keep_video,
+                min_brightness=args.min_brightness,
             )
             print("Done!")
     except Exception as e:
