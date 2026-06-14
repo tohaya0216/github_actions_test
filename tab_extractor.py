@@ -150,7 +150,7 @@ def detect_horizontal_scroll(
     )
     _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-    if max_val < 0.70:
+    if max_val < 0.55:
         return 0  # No reliable match
 
     # matched_x: position of template in curr
@@ -222,7 +222,8 @@ def extract_tab_frames(
     tab_region: tuple[int, int, int, int] | None = None,
     sample_interval: float = 0.25,
     min_scroll_px: int = 3,
-    min_brightness: float = 140.0,
+    min_brightness: float = 120.0,
+    gap_sec: float = 2.0,
 ) -> tuple[list[np.ndarray], list[int]]:
     """
     Extract tab frames from video, tracking horizontal scroll offsets.
@@ -257,6 +258,8 @@ def extract_tab_frames(
     offsets: list[int] = []
     prev_gray: np.ndarray | None = None
     skipped_dark = 0
+    forced_adds = 0
+    last_added_sec = -gap_sec  # ensure first tab frame is always added
     frame_idx = 0
 
     while frame_idx < total_frames:
@@ -264,6 +267,8 @@ def extract_tab_frames(
         ret, frame = cap.read()
         if not ret:
             break
+
+        current_sec = frame_idx / fps
 
         # Crop to tab region
         if tab_region:
@@ -284,20 +289,38 @@ def extract_tab_frames(
             frames.append(gray.copy())
             offsets.append(0)
             prev_gray = gray.copy()
+            last_added_sec = current_sec
         else:
-            scroll = detect_horizontal_scroll(prev_gray, gray)
+            # Use wider search range to handle large jumps after camera cuts
+            scroll = detect_horizontal_scroll(prev_gray, gray, max_scroll=500)
+            time_since_last = current_sec - last_added_sec
+
             if scroll >= min_scroll_px:
                 frames.append(gray.copy())
                 offsets.append(scroll)
                 prev_gray = gray.copy()
+                last_added_sec = current_sec
+            elif time_since_last >= gap_sec:
+                # Tab reappeared after a gap (camera cut or pause) — force-add
+                # as a new section. offset=-1 signals stitch to append the full frame.
+                frames.append(gray.copy())
+                offsets.append(-1)
+                prev_gray = gray.copy()
+                last_added_sec = current_sec
+                forced_adds += 1
 
         progress = frame_idx / total_frames * 100
-        print(f"\r  Extracting: {progress:.1f}% ({len(frames)} frames, {skipped_dark} dark skipped)", end="", flush=True)
+        print(
+            f"\r  Extracting: {progress:.1f}%  "
+            f"({len(frames)} frames, {skipped_dark} dark skipped, {forced_adds} forced)",
+            end="", flush=True,
+        )
 
         frame_idx += frame_step
 
     cap.release()
-    print(f"\nExtracted {len(frames)} frames ({skipped_dark} dark frames skipped)")
+    print(f"\nExtracted {len(frames)} frames "
+          f"({skipped_dark} dark skipped, {forced_adds} forced after gap)")
 
     # Normalize frame heights to fix vertical drift
     frames = normalize_frame_heights(frames)
@@ -359,16 +382,21 @@ def stitch_horizontal(
     result = frames[0].copy()
 
     for i, (frame, scroll) in enumerate(zip(frames[1:], offsets[1:]), 1):
-        if scroll <= 0:
+        if scroll == 0:
             continue
-        # The new content is the rightmost `scroll` columns of the current frame
-        new_strip = frame[:, -scroll:]
-        if new_strip.shape[1] > 0 and new_strip.shape[0] == result.shape[0]:
-            result = np.hstack([result, new_strip])
-        elif new_strip.shape[0] != result.shape[0]:
-            # Height mismatch: resize strip to match
-            resized = cv2.resize(new_strip, (new_strip.shape[1], result.shape[0]))
-            result = np.hstack([result, resized])
+
+        if scroll > 0:
+            # Normal scroll: append only the new right-edge strip
+            new_strip = frame[:, -scroll:]
+        else:
+            # scroll == -1: forced add after gap — append entire frame
+            new_strip = frame
+
+        if new_strip.shape[1] == 0:
+            continue
+        if new_strip.shape[0] != result.shape[0]:
+            new_strip = cv2.resize(new_strip, (new_strip.shape[1], result.shape[0]))
+        result = np.hstack([result, new_strip])
 
         print(f"\r  Stitching: {i}/{len(frames)-1} ({result.shape[1]}px wide)", end="", flush=True)
 
@@ -589,7 +617,7 @@ def extract_tabs_from_video(
     tab_region: tuple[int, int, int, int] | None = None,
     sample_interval: float = 0.5,
     keep_video: bool = False,
-    min_brightness: float = 140.0,
+    min_brightness: float = 120.0,
 ) -> None:
     """
     Main entry point: download (if URL), extract tabs, generate PDF.
@@ -675,7 +703,7 @@ Examples:
     parser.add_argument(
         "--min-brightness",
         type=float,
-        default=140.0,
+        default=120.0,
         help=(
             "Minimum mean brightness (0-255) for a frame to be considered tab notation. "
             "Darker frames are skipped as performance video. (default: 140)"
