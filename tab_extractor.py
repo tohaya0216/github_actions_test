@@ -116,12 +116,12 @@ def detect_tab_region(frame: np.ndarray) -> tuple[int, int, int, int] | None:
 def detect_horizontal_scroll(
     prev: np.ndarray,
     curr: np.ndarray,
-    max_scroll: int = 300,
+    max_scroll: int = 500,
 ) -> int:
     """
     Detect how many pixels the tab has scrolled left between two frames.
-    Takes a wide template from the centre of prev (avoids cut-off edges)
-    and searches for it shifted left in curr.
+    Tries multiple template regions (left / centre / right) and returns the
+    result with the highest match confidence.
     Returns positive integer = pixels scrolled left (new content on right).
     Returns 0 if scroll cannot be determined.
     """
@@ -129,34 +129,41 @@ def detect_horizontal_scroll(
     if w < max_scroll * 2 + 50:
         return 0
 
-    # Template: centre portion, excluding the outermost max_scroll columns
-    # (those may be cut off in a scrolled frame)
-    t_start = max_scroll
-    t_end = w - max_scroll
-    if t_end - t_start < 30:
-        return 0
+    # Try three template regions to handle sparse content (no fret numbers
+    # in the centre may cause the centre template to match everywhere equally)
+    third = w // 3
+    candidates = [
+        (max_scroll, w - max_scroll),          # full centre
+        (max_scroll, max_scroll + third),       # left third
+        (w - max_scroll - third, w - max_scroll),  # right third
+    ]
 
-    template = prev[:, t_start:t_end]
+    best_scroll = 0
+    best_score = 0.55  # minimum confidence threshold
 
-    # Search region: same right boundary as template, extended left by max_scroll
-    search_region = curr[:, 0:t_end]
-    if search_region.shape[1] < (t_end - t_start):
-        return 0
+    for t_start, t_end in candidates:
+        t_w = t_end - t_start
+        if t_w < 30 or t_start < 0 or t_end > w:
+            continue
 
-    result = cv2.matchTemplate(
-        search_region.astype(np.float32),
-        template.astype(np.float32),
-        cv2.TM_CCOEFF_NORMED,
-    )
-    _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        template = prev[:, t_start:t_end]
+        search_region = curr[:, 0:t_end]
+        if search_region.shape[1] < t_w:
+            continue
 
-    if max_val < 0.55:
-        return 0  # No reliable match
+        result = cv2.matchTemplate(
+            search_region.astype(np.float32),
+            template.astype(np.float32),
+            cv2.TM_CCOEFF_NORMED,
+        )
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-    # matched_x: position of template in curr
-    matched_x = max_loc[0]
-    scroll = t_start - matched_x  # positive = content moved left = tab scrolled left
-    return max(0, scroll)
+        if max_val > best_score:
+            best_score = max_val
+            scroll = t_start - max_loc[0]
+            best_scroll = max(0, scroll)
+
+    return best_scroll
 
 
 def _is_tab_frame(gray: np.ndarray, min_brightness: float = 140.0) -> bool:
@@ -301,13 +308,19 @@ def extract_tab_frames(
                 prev_gray = gray.copy()
                 last_added_sec = current_sec
             elif time_since_last >= gap_sec:
-                # Tab reappeared after a gap (camera cut or pause) — force-add
-                # as a new section. offset=-1 signals stitch to append the full frame.
-                frames.append(gray.copy())
-                offsets.append(-1)
-                prev_gray = gray.copy()
+                # Enough time has passed — check if content actually changed.
+                # If similarity is high the tab is stationary (pause/intro),
+                # so only reset the timer. If content differs, it has scrolled
+                # past our detection range → force-add as a new section.
+                sim = _frame_similarity(prev_gray, gray)
+                if sim < 0.92:
+                    frames.append(gray.copy())
+                    offsets.append(-1)  # sentinel: new section, append full frame
+                    prev_gray = gray.copy()
+                    forced_adds += 1
+                # Always reset the timer so we re-check in another gap_sec,
+                # regardless of whether we added the frame.
                 last_added_sec = current_sec
-                forced_adds += 1
 
         progress = frame_idx / total_frames * 100
         print(
