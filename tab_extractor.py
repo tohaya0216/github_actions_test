@@ -344,11 +344,10 @@ def extract_tab_frames(
                 last_added_sec = current_sec
             elif time_since_last >= gap_sec:
                 # Enough time has passed — check if content actually changed.
-                # If similarity is high the tab is stationary (pause/intro),
-                # so only reset the timer. If content differs, it has scrolled
-                # past our detection range → force-add as a new section.
+                # Use a STRICTER brightness check for forced-adds: transition
+                # frames right at a gap boundary are often partially dark.
                 sim = _frame_similarity(prev_gray, gray)
-                if sim < 0.92:
+                if sim < 0.92 and _is_tab_frame(gray, min_brightness=140.0):
                     frames.append(gray.copy())
                     offsets.append(-1)  # sentinel: new section, append full frame
                     prev_gray = gray.copy()
@@ -372,6 +371,20 @@ def extract_tab_frames(
 
     # Normalize frame heights to fix vertical drift
     frames = normalize_frame_heights(frames)
+
+    # Second-pass filter: remove any frames that are still too dark after
+    # normalization (e.g. forced-add transition frames where the crop window
+    # happened to include dark video rows)
+    before = len(frames)
+    clean_frames, clean_offsets = [], []
+    for f, o in zip(frames, offsets):
+        if _is_tab_frame(f, min_brightness=130.0):
+            clean_frames.append(f)
+            clean_offsets.append(o)
+    removed = before - len(clean_frames)
+    if removed:
+        print(f"Removed {removed} dark frame(s) after normalization")
+    frames, offsets = clean_frames, clean_offsets
 
     return frames, offsets
 
