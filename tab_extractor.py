@@ -168,11 +168,60 @@ def _is_tab_frame(gray: np.ndarray, min_brightness: float = 140.0) -> bool:
     return float(np.mean(gray)) >= min_brightness
 
 
+def _find_content_rows(gray: np.ndarray) -> tuple[int, int] | None:
+    """
+    Find the top and bottom row of actual tab content (string lines + numbers).
+    Returns (top_row, bottom_row) or None if not found.
+    """
+    h, w = gray.shape
+    # Rows with significant dark content (string lines or numbers)
+    dark_per_row = np.sum(gray < 128, axis=1)
+    line_threshold = w * 0.10  # at least 10% of width is dark
+    content_rows = np.where(dark_per_row > line_threshold)[0]
+    if len(content_rows) < 2:
+        return None
+    return int(content_rows[0]), int(content_rows[-1])
+
+
+def normalize_frame_heights(frames: list[np.ndarray]) -> list[np.ndarray]:
+    """
+    Re-crop all frames to a consistent height by detecting actual content bounds.
+    Fixes vertical drift when the tab overlay shifts slightly between frames.
+    """
+    if not frames:
+        return frames
+
+    # Find content bounds for each frame
+    bounds = [_find_content_rows(f) for f in frames]
+    valid_bounds = [b for b in bounds if b is not None]
+    if not valid_bounds:
+        return frames
+
+    tops = [b[0] for b in valid_bounds]
+    bottoms = [b[1] for b in valid_bounds]
+
+    # Use median bounds so outlier frames don't affect the crop
+    med_top = int(np.median(tops))
+    med_bottom = int(np.median(bottoms))
+
+    # Add padding
+    h = frames[0].shape[0]
+    pad = max(8, (med_bottom - med_top) // 6)
+    crop_top = max(0, med_top - pad)
+    crop_bottom = min(h, med_bottom + pad)
+
+    if crop_bottom <= crop_top:
+        return frames
+
+    print(f"Normalizing frame height: y={crop_top}–{crop_bottom} ({crop_bottom - crop_top}px)")
+    return [f[crop_top:crop_bottom] for f in frames]
+
+
 def extract_tab_frames(
     video_path: str,
     tab_region: tuple[int, int, int, int] | None = None,
-    sample_interval: float = 0.5,
-    min_scroll_px: int = 5,
+    sample_interval: float = 0.25,
+    min_scroll_px: int = 3,
     min_brightness: float = 140.0,
 ) -> tuple[list[np.ndarray], list[int]]:
     """
@@ -249,6 +298,10 @@ def extract_tab_frames(
 
     cap.release()
     print(f"\nExtracted {len(frames)} frames ({skipped_dark} dark frames skipped)")
+
+    # Normalize frame heights to fix vertical drift
+    frames = normalize_frame_heights(frames)
+
     return frames, offsets
 
 
@@ -611,8 +664,8 @@ Examples:
     parser.add_argument(
         "--interval",
         type=float,
-        default=0.5,
-        help="Frame sampling interval in seconds (default: 0.5)",
+        default=0.25,
+        help="Frame sampling interval in seconds (default: 0.25)",
     )
     parser.add_argument(
         "--keep-video",
