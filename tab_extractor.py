@@ -46,48 +46,73 @@ def download_video(url: str, output_dir: str) -> str:
 def detect_tab_region(frame: np.ndarray) -> tuple[int, int, int, int] | None:
     """
     Detect the tab notation region in a frame.
-    Returns (x, y, w, h) or None if not detected.
+    Returns (x, y, w, h) or None if detection fails.
 
-    Looks for a band of 4–6 evenly-spaced, nearly-full-width horizontal lines
-    (guitar/bass strings) that form the tab staff.
+    Strategy A — brightness split (most reliable for performance + tab overlay):
+      Tab notation is shown on a white/light background. Compute per-row
+      brightness; find the largest contiguous bright band (mean > 155) that is
+      flanked above or below by darker content. This robustly separates the tab
+      overlay from the dark guitar-performance video.
+
+    Strategy B — horizontal string-line detection (fallback for tab-only videos):
+      Look for 4–6 evenly-spaced, nearly full-width horizontal lines.
     """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
+    row_means = np.mean(gray, axis=1)
+    overall_mean = float(np.mean(row_means))
 
-    # Detect long horizontal lines using a wide morphological kernel
+    # ── Strategy A: bright-region detection ──────────────────────────────────
+    # Only apply when the frame has a meaningful dark/light contrast
+    # (i.e. not an all-bright tab-only frame).
+    if overall_mean < 180:
+        bright_threshold = 155
+        bright = row_means > bright_threshold
+
+        # Find all contiguous bright segments
+        segments: list[tuple[int, int]] = []
+        in_seg = False
+        seg_start = 0
+        for i, b in enumerate(bright):
+            if b and not in_seg:
+                seg_start = i
+                in_seg = True
+            elif not b and in_seg:
+                segments.append((seg_start, i - 1))
+                in_seg = False
+        if in_seg:
+            segments.append((seg_start, h - 1))
+
+        if segments:
+            # Pick the largest bright segment
+            best = max(segments, key=lambda s: s[1] - s[0])
+            top, bottom = best
+            region_h = bottom - top
+            if region_h >= h * 0.04:
+                pad = max(10, region_h // 8)
+                return (0, max(0, top - pad), w, min(h, region_h + 2 * pad))
+
+    # ── Strategy B: evenly-spaced horizontal string lines ────────────────────
     kernel_w = max(w // 6, 50)
     kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_w, 1))
     horizontal = cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel_h)
-
-    # Binarize: white = detected horizontal line content
     _, binary = cv2.threshold(horizontal, 30, 255, cv2.THRESH_BINARY_INV)
-
-    # Row density: fraction of the row covered by detected lines
     row_density = np.sum(binary == 255, axis=1) / w
 
-    # Collect rows that look like tab strings (high horizontal coverage)
-    line_threshold = 0.5
-    line_rows = np.where(row_density > line_threshold)[0]
+    line_rows = np.where(row_density > 0.5)[0]
     if len(line_rows) < 4:
         return None
 
-    # Group contiguous line rows into bands (individual string lines)
     bands: list[tuple[int, int]] = []
     start = line_rows[0]
-    prev = line_rows[0]
+    prev_r = line_rows[0]
     for r in line_rows[1:]:
-        if r - prev > 3:  # gap > 3px = new band
-            bands.append((start, prev))
+        if r - prev_r > 3:
+            bands.append((start, prev_r))
             start = r
-        prev = r
-    bands.append((start, prev))
+        prev_r = r
+    bands.append((start, prev_r))
 
-    if len(bands) < 4:
-        return None
-
-    # Filter: keep only bands that look evenly spaced (tab staff heuristic)
-    # Try every consecutive window of 4–6 bands with uniform spacing
-    best_region = None
     for n in (6, 5, 4):
         if len(bands) < n:
             continue
@@ -99,18 +124,14 @@ def detect_tab_region(frame: np.ndarray) -> tuple[int, int, int, int] | None:
             if mean_diff < 4:
                 continue
             variance = sum((d - mean_diff) ** 2 for d in diffs) / len(diffs)
-            # Coefficient of variation < 25% → evenly spaced
             if (variance ** 0.5 / mean_diff) < 0.25:
                 top = max(0, window[0][0] - int(mean_diff * 0.5))
                 bottom = min(h - 1, window[-1][1] + int(mean_diff * 0.5))
                 region_h = bottom - top
                 if region_h > h * 0.04:
-                    best_region = (0, top, w, region_h)
-                    break
-        if best_region:
-            break
+                    return (0, top, w, region_h)
 
-    return best_region
+    return None
 
 
 def detect_horizontal_scroll(
@@ -359,16 +380,15 @@ def _auto_detect_region(
     cap: cv2.VideoCapture,
     total_frames: int,
 ) -> tuple[int, int, int, int] | None:
-    """Sample a few frames to auto-detect the tab region."""
-    sample_positions = [
-        int(total_frames * 0.15),
-        int(total_frames * 0.35),
-        int(total_frames * 0.55),
-        int(total_frames * 0.75),
-    ]
+    """
+    Sample frames across the video to auto-detect the tab region.
+    Uses 8 sample points and takes the 10th/90th percentile of detected
+    boundaries for a generous, stable crop.
+    """
+    ratios = [0.10, 0.20, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85]
     candidates = []
-    for pos in sample_positions:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
+    for ratio in ratios:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(total_frames * ratio))
         ret, frame = cap.read()
         if not ret:
             continue
@@ -379,16 +399,16 @@ def _auto_detect_region(
     if not candidates:
         return None
 
-    # Use median of detected region boundaries
-    tops = sorted(c[1] for c in candidates)
-    bottoms = sorted(c[1] + c[3] for c in candidates)
-    median_top = tops[len(tops) // 2]
-    median_bottom = bottoms[len(bottoms) // 2]
+    tops = [c[1] for c in candidates]
+    bottoms = [c[1] + c[3] for c in candidates]
+    # 10th percentile top (more content included) / 90th percentile bottom
+    det_top = int(np.percentile(tops, 10))
+    det_bottom = int(np.percentile(bottoms, 90))
     width = candidates[0][2]
-    region_h = median_bottom - median_top
+    region_h = det_bottom - det_top
     if region_h < 20:
         return None
-    return (0, median_top, width, region_h)
+    return (0, det_top, width, region_h)
 
 
 def _avoid_barline_split(frame: np.ndarray, cut: int, search_range: int = 5) -> int:
