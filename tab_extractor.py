@@ -169,15 +169,21 @@ def detect_horizontal_scroll(
 def _is_tab_frame(gray: np.ndarray, min_brightness: float = 120.0) -> bool:
     """
     Return True if this region looks like a tab notation frame.
-    Rejects frames that are too dark overall OR contain large dark blobs
-    (camera footage / performance video bleeding into the tab region).
+
+    Rejects frames that:
+    - Are too dark overall (mean brightness below threshold)
+    - Have large dark patches (> 20% pixels below 80) — camera footage blobs
+    - Have dark horizontal bands (> 25% of rows with mean brightness < 100)
+      — catches frames where a camera image band sits in the tab region
     """
     if float(np.mean(gray)) < min_brightness:
         return False
-    # Reject frames with large dark patches (> 25% pixels below 60)
-    # Tab notation has a light background; only string lines and numbers are dark
-    dark_ratio = float(np.sum(gray < 60)) / gray.size
-    if dark_ratio > 0.25:
+    # Large dark pixel blobs (lowered threshold to 80, was 60)
+    if float(np.sum(gray < 80)) / gray.size > 0.20:
+        return False
+    # Dark horizontal bands: if many rows are dark on average, it's camera content
+    row_means = np.mean(gray, axis=1)
+    if float(np.sum(row_means < 100)) / len(row_means) > 0.25:
         return False
     return True
 
@@ -385,6 +391,28 @@ def _auto_detect_region(
     return (0, median_top, width, region_h)
 
 
+def _avoid_barline_split(frame: np.ndarray, cut: int, search_range: int = 5) -> int:
+    """
+    Adjust the cut position so we don't slice through a vertical bar line.
+    Looks for a column that is mostly dark (bar line) within search_range of cut.
+    If found, moves the cut to just AFTER that bar line so it appears once.
+    """
+    h, w = frame.shape[:2]
+    lo = max(0, cut - search_range)
+    hi = min(w - 1, cut + search_range)
+
+    # Column darkness: fraction of pixels below 80 in each column
+    col_dark = np.mean(frame[:, lo:hi + 1] < 80, axis=0)
+
+    # Find the darkest column near the cut — if it's > 40% dark, treat as bar line
+    best_col = int(np.argmax(col_dark))
+    if col_dark[best_col] > 0.40:
+        # Move cut to just after the bar line
+        return lo + best_col + 1
+
+    return cut
+
+
 def stitch_horizontal(
     frames: list[np.ndarray],
     offsets: list[int],
@@ -407,8 +435,13 @@ def stitch_horizontal(
             continue
 
         if scroll > 0:
-            # Normal scroll: append only the new right-edge strip
-            new_strip = frame[:, -scroll:]
+            # Normal scroll: append the new right-edge strip.
+            # Nudge the cut leftward to avoid splitting a bar line:
+            # if a vertical bar line (dark column) is within ±4px of the cut,
+            # shift the cut to just after it so it appears once, not twice.
+            cut = frame.shape[1] - scroll
+            cut = _avoid_barline_split(frame, cut, search_range=5)
+            new_strip = frame[:, cut:]
         else:
             # scroll == -1: forced add after gap — append entire frame
             new_strip = frame
