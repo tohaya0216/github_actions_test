@@ -38,9 +38,9 @@
 | `referral_fee_rate` | | Amazon販売手数料率（0〜1の小数）。空欄なら0.15を仮置きするが、**必ずAmazon Revenue Calculatorの数値に置き換えること**（15章の訂正参照） |
 | `fba_fee` | | FBA配送代行手数料（円）。空欄なら0として計算されるため、実際は必ず入力する |
 | `estimated_monthly_sales` | | Keepaのランキング推移等から見積もった月間販売個数の目安 |
-| `seller_count_spike` | | 出品者数が急増しているか（`yes`/`no`）。9-3の値崩れ予測に対応 |
-| `amazon_itself_selling` | | Amazon本体が出品しているか（`yes`/`no`） |
-| `is_famous_brand` | | 真贋調査リスクの高い有名ブランド品か（`yes`/`no`）。9-2に対応 |
+| `seller_count_spike` | | 出品者数が急増しているか（`yes`/`no`）。9-3の値崩れ予測に対応。**空欄は「未確認」として扱われB判定に留まる（noと明記した場合のみ確認済み扱い）** |
+| `amazon_itself_selling` | | Amazon本体が出品しているか（`yes`/`no`）。空欄の扱いは上記と同じ |
+| `is_famous_brand` | | 真贋調査リスクの高い有名ブランド品か（`yes`/`no`）。9-2に対応。空欄の扱いは上記と同じ |
 | `research_minutes` | | この商品の調査にかかった時間（分）。集計すると15-5の「利益÷作業時間」の実測に使える |
 | `notes` | | 自由記入欄 |
 
@@ -69,3 +69,11 @@
 - 販売手数料・FBA手数料はカテゴリ・サイズで変動するため、`referral_fee_rate`と`fba_fee`は
   必ずAmazon Revenue Calculatorで確認した実数を入力すること。デフォルト値のまま判定しない。
 - サンプルの`template.csv`はすべてダミーデータ。実際の商品情報に置き換えて使うこと。
+- `seller_count_spike`・`amazon_itself_selling`・`is_famous_brand`は、未確認のまま空欄にすると
+  「no（安全）」ではなく「未確認」として扱われ、他の基準を満たしていてもB判定に留まる。
+  実際にこの発見に至った経緯は `research-log/README.md`（2026-09-22の記録）を参照。
+
+## リサーチログ
+
+実際にこのツールに通したデータと、そこから得られた知見は `research-log/` に蓄積している。
+Phase 0を進める際は、新しいバッチごとに結果と気づきをそこに追記していくとよい。

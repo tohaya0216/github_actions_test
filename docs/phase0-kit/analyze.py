@@ -26,11 +26,17 @@ CSVの列（ヘッダー名は固定。順不同で可）:
                             実際の判定にはAmazon Revenue Calculatorの数値を使うこと）
     fba_fee                 FBA配送代行手数料（円。空欄なら0として計算）
     estimated_monthly_sales Keepaのランキング推移等から見積もった月間販売個数の目安
-    seller_count_spike      出品者数が急増しているか（yes/no）
-    amazon_itself_selling   Amazon本体が出品しているか（yes/no）
-    is_famous_brand         真贋調査リスクの高い有名ブランド品か（yes/no）
+    seller_count_spike      出品者数が急増しているか（yes/no。空欄は「未確認」として扱われ、
+                            自動的にB判定に留め置かれる。「no」と明記した場合のみ確認済み扱い）
+    amazon_itself_selling   Amazon本体が出品しているか（yes/no。空欄の扱いは上記と同じ）
+    is_famous_brand         真贋調査リスクの高い有名ブランド品か（yes/no。空欄の扱いは上記と同じ）
     research_minutes        この商品の調査にかかった時間（分）。任意項目
     notes                   自由記入欄。任意項目
+
+注意: seller_count_spike / amazon_itself_selling / is_famous_brand は、空欄を
+「no（安全）」とは解釈しない。未確認のまま安全側とみなすと、有名ブランド品などの
+リスクを見逃したままA判定してしまう事故につながるため（実例はdocs/dennou-sedori-tips.md
+の運用ログを参照）、空欄は必ず「要確認」としてB以上には進ませない設計にしている。
 
 判定基準（変更する場合はCONFIGを編集する。根拠は docs/dennou-sedori-tips.md を参照）:
     MIN_PROFIT_MARGIN      11-3: 利益率20%以上
@@ -58,10 +64,17 @@ CONFIG = {
 REQUIRED_COLUMNS = ["asin", "rakuten_price", "amazon_price"]
 
 YES_VALUES = {"yes", "y", "true", "1", "はい"}
+NO_VALUES = {"no", "n", "false", "0", "いいえ"}
 
 
-def to_bool(value: str) -> bool:
-    return str(value).strip().lower() in YES_VALUES
+def to_tri_bool(value: str):
+    """yes -> True / no -> False / 空欄・不明な値 -> None（未確認）"""
+    v = str(value or "").strip().lower()
+    if v in YES_VALUES:
+        return True
+    if v in NO_VALUES:
+        return False
+    return None
 
 
 def to_float(value: str, default: float = 0.0) -> float:
@@ -74,6 +87,17 @@ def to_float(value: str, default: float = 0.0) -> float:
         return default
 
 
+def to_float_optional(value: str):
+    """空欄なら None（未確認）、それ以外は数値に変換する"""
+    value = (value or "").strip()
+    if value == "":
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
 @dataclass
 class Candidate:
     asin: str
@@ -83,10 +107,10 @@ class Candidate:
     amazon_price: float
     referral_fee_rate: float
     fba_fee: float
-    estimated_monthly_sales: float
-    seller_count_spike: bool
-    amazon_itself_selling: bool
-    is_famous_brand: bool
+    estimated_monthly_sales: object  # float または None（未確認）
+    seller_count_spike: object       # bool または None（未確認）
+    amazon_itself_selling: object    # bool または None（未確認）
+    is_famous_brand: object          # bool または None（未確認）
     research_minutes: float
     notes: str
 
@@ -116,33 +140,47 @@ class Candidate:
         self._judge()
 
     def _judge(self) -> None:
-        reasons = []
+        hard_fail_reasons = []
+        unknown_reasons = []
 
         # 即座に見送り（9-2 真贋調査リスク、9-3 出品者急増、7-2 Amazon本体出品）
-        if self.amazon_itself_selling:
-            reasons.append("Amazon本体が出品している")
-        if self.is_famous_brand:
-            reasons.append("有名ブランド品（真贋調査リスク）")
-        if self.seller_count_spike:
-            reasons.append("出品者数が急増している（値崩れの波を警戒）")
-        if self.estimated_monthly_sales < CONFIG["MIN_MONTHLY_SALES"]:
-            reasons.append(
+        # True/False が明示されている場合のみ判定する。空欄（None）は「安全」とは解釈しない。
+        if self.amazon_itself_selling is True:
+            hard_fail_reasons.append("Amazon本体が出品している")
+        elif self.amazon_itself_selling is None:
+            unknown_reasons.append("Amazon本体の出品有無が未確認")
+
+        if self.is_famous_brand is True:
+            hard_fail_reasons.append("有名ブランド品（真贋調査リスク）")
+        elif self.is_famous_brand is None:
+            unknown_reasons.append("有名ブランド品かどうかが未確認（真贋調査リスクの見落とし注意）")
+
+        if self.seller_count_spike is True:
+            hard_fail_reasons.append("出品者数が急増している（値崩れの波を警戒）")
+        elif self.seller_count_spike is None:
+            unknown_reasons.append("出品者数の急増有無が未確認")
+
+        if self.estimated_monthly_sales is None:
+            unknown_reasons.append("月間販売数が未確認")
+        elif self.estimated_monthly_sales < CONFIG["MIN_MONTHLY_SALES"]:
+            hard_fail_reasons.append(
                 f"月間販売数が基準未満（{self.estimated_monthly_sales} < {CONFIG['MIN_MONTHLY_SALES']}）"
             )
+
         if self.profit < 0:
-            reasons.append("現在価格でも赤字")
+            hard_fail_reasons.append("現在価格でも赤字")
         if self.profit_margin < CONFIG["MIN_PROFIT_MARGIN"]:
-            reasons.append(
+            hard_fail_reasons.append(
                 f"利益率が基準未満（{self.profit_margin:.1%} < {CONFIG['MIN_PROFIT_MARGIN']:.0%}）"
             )
         if self.profit < CONFIG["MIN_PROFIT_YEN"]:
-            reasons.append(
+            hard_fail_reasons.append(
                 f"粗利が基準未満（{self.profit:.0f}円 < {CONFIG['MIN_PROFIT_YEN']}円）"
             )
 
-        if reasons:
+        if hard_fail_reasons:
             self.category = "C"
-            self.reasons = reasons
+            self.reasons = hard_fail_reasons
             return
 
         # ここまで通過 → 15-3の価格下落ストレステスト
@@ -151,8 +189,14 @@ class Candidate:
             self.reasons = ["基本基準は満たすが、-20%の価格下落で赤字化する（要再確認）"]
             return
 
+        # 明確な不合格理由はないが、リスクフラグが未確認のまま → Aにはしない
+        if unknown_reasons:
+            self.category = "B"
+            self.reasons = unknown_reasons
+            return
+
         self.category = "A"
-        self.reasons = ["基本基準・-20%ストレステストともに通過"]
+        self.reasons = ["基本基準・-20%ストレステストともに通過（リスクフラグも確認済み）"]
 
 
 def load_candidates(path: Path) -> list:
@@ -177,10 +221,10 @@ def load_candidates(path: Path) -> list:
                         row.get("referral_fee_rate"), CONFIG["DEFAULT_REFERRAL_FEE_RATE"]
                     ),
                     fba_fee=to_float(row.get("fba_fee"), 0.0),
-                    estimated_monthly_sales=to_float(row.get("estimated_monthly_sales"), 0.0),
-                    seller_count_spike=to_bool(row.get("seller_count_spike", "no")),
-                    amazon_itself_selling=to_bool(row.get("amazon_itself_selling", "no")),
-                    is_famous_brand=to_bool(row.get("is_famous_brand", "no")),
+                    estimated_monthly_sales=to_float_optional(row.get("estimated_monthly_sales")),
+                    seller_count_spike=to_tri_bool(row.get("seller_count_spike")),
+                    amazon_itself_selling=to_tri_bool(row.get("amazon_itself_selling")),
+                    is_famous_brand=to_tri_bool(row.get("is_famous_brand")),
                     research_minutes=to_float(row.get("research_minutes"), 0.0),
                     notes=row.get("notes", "").strip(),
                 )
@@ -196,6 +240,14 @@ def load_candidates(path: Path) -> list:
         if skipped:
             print(f"-> 合計 {skipped} 行をスキップしました\n")
         return candidates
+
+
+def tri_bool_str(value) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "未確認"
 
 
 def write_result(candidates: list, out_path: Path) -> None:
@@ -219,10 +271,10 @@ def write_result(candidates: list, out_path: Path) -> None:
                 "amazon_price": c.amazon_price,
                 "referral_fee_rate": c.referral_fee_rate,
                 "fba_fee": c.fba_fee,
-                "estimated_monthly_sales": c.estimated_monthly_sales,
-                "seller_count_spike": "yes" if c.seller_count_spike else "no",
-                "amazon_itself_selling": "yes" if c.amazon_itself_selling else "no",
-                "is_famous_brand": "yes" if c.is_famous_brand else "no",
+                "estimated_monthly_sales": c.estimated_monthly_sales if c.estimated_monthly_sales is not None else "未確認",
+                "seller_count_spike": tri_bool_str(c.seller_count_spike),
+                "amazon_itself_selling": tri_bool_str(c.amazon_itself_selling),
+                "is_famous_brand": tri_bool_str(c.is_famous_brand),
                 "effective_cost": round(c.effective_cost),
                 "profit": round(c.profit),
                 "profit_margin": f"{c.profit_margin:.1%}",
