@@ -56,12 +56,18 @@
       3点セットを`docs/phase0-kit/seller-research/`に作成
       （`seller-watchlist-template.csv` / `seller-products-template.csv` /
       `astra-prompt-rakuten-check.md`。詳細はそのディレクトリのREADME参照）
+- [x] **Keepaのエクスポート機能を確認**（2026-09-22）。セラーIDをKeepaの出品者検索画面に
+      貼り付けると出品商品一覧をCSVエクスポート可能（Excel形式も選択可）と判明。
+      **ただし有料プラン限定の機能**（無料版は価格推移グラフのみ）。拡張機能の自作は不要
+- [x] **②③の結果を統合するスクリプトを作成**（2026-09-22）。`merge_seller_research.py`が
+      Amazon側・楽天側のCSVを商品名で自動突合し、在庫なし・転売禁止・型番不一致を
+      自動除外した上で`analyze.py`用CSVを出力する。動作確認済み
 - [ ] **セラーリサーチを実行する（4段階）**：
       ①Amazon上で評価数50〜400件・複数ブランド扱いのセラーを20〜30件探し
-      `seller-watchlist.csv`に記録 → ②うち3〜5セラーを選び、Keepa等で出品商品・
-      型番・出品者数・ランキング推移を`seller-products.csv`に記録 → ③型番リストを
-      `astra-prompt-rakuten-check.md`でAstraに渡し楽天側を確認 → ④結果を統合して
-      `analyze.py`で判定、`research-log/`に集計
+      `seller-watchlist.csv`に記録 → ②うち3〜5セラーを選び、**Keepa有料プランの
+      エクスポート機能**で出品商品・型番・出品者数・ランキング推移を`seller-products.csv`に
+      記録 → ③型番リストを`astra-prompt-rakuten-check.md`でAstraに渡し楽天側を確認 →
+      ④`merge_seller_research.py`で統合して`analyze.py`で判定、`research-log/`に集計
 - [x] **事業用の専用メールアドレスを取得する**（無料のGmail等でよい）。取得済み（2026-09-22）。
       ※実際のアドレスはこのリポジトリには記載しない（公開・共有される可能性があるため）。
       Amazon出品用アカウント（Seller Central）の登録に使い、請求書・注文確認メールの
