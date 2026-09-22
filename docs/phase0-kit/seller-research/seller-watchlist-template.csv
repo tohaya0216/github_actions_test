@@ -1,2 +1,3 @@
-seller_id,seller_name,seller_url,review_count,category_tendency,first_checked_date,last_checked_date,status,notes
-S001,【サンプル】ダミーストア,https://www.amazon.co.jp/sp?seller=EXAMPLE1,180,楽器アクセサリー・DIY工具,2026-09-22,2026-09-22,active,ダミーデータ。実際のセラーIDに置き換えて使う
+seller_id,seller_name,seller_url,review_count,category_tendency,quality_rating,first_checked_date,last_evaluated_date,last_checked_date,status,notes
+S001,【サンプル】ダミーストア,https://www.amazon.co.jp/sp?seller=EXAMPLE1,180,楽器アクセサリー・DIY工具,A,2026-09-22,2026-09-22,2026-09-22,active,ダミーデータ。初回評価でA判定（analyze.pyでA/Bが複数出た想定）。継続監視対象
+S002,【サンプル】ダミーストア2,https://www.amazon.co.jp/sp?seller=EXAMPLE2,95,キッチン雑貨のみ,C,2026-09-22,2026-09-22,,excluded,ダミーデータ。単一ブランド直営に近く電脳せどらーらしさが薄いためC判定・監視対象外

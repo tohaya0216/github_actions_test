@@ -34,6 +34,41 @@
   次回以降は「前回チェック以降に増えた新規出品」だけを見ればよい
   （新規出品の方が参入者が少なく、鮮度が高いため7-2の懸念にも合致する）
 
+#### セラーが多くなってきたら：質による絞り込み運用（2段階）
+
+セラーリストは多いほど候補の母数は増えるが、そのまま全セラーを毎回定点観測すると
+チェックの手間が際限なく増えていく（リストが多いほど良いわけではない）。そこで
+以下の2段階運用にする：
+
+1. **広く集めて一度評価する**：新規セラーは一度②③④まで通し、`analyze.py`の判定結果
+   （A/B/Cがどれだけ出たか、自分の仕入れ方針に合うか）をもとに、セラーごとの
+   `quality_rating`（S/A/B/C）を`seller-watchlist.csv`に記録する。合わせて
+   `last_evaluated_date`を更新する
+2. **以降の定点観測はS/Aランクだけ**：`quality_rating`がS/Aのセラーだけを継続的に
+   `last_checked_date`ベースで追いかける。B/Cランクのセラー（単一ブランド直営に近い、
+   判定基準を満たす候補がほぼ出ない等）は`status`を`excluded`にして追わない
+3. **評価は数ヶ月に一度やり直す**：`quality_rating`は一度付けたら固定ではない。
+   セラーの出品傾向は変わりうるので、`last_evaluated_date`が古くなったセラーは
+   （B/Cランクも含めて）再度評価し直し、リストを新鮮に保つ
+
+この運用の鮮度チェックを自動化したのが`check_watchlist_freshness.py`：
+
+```bash
+python3 check_watchlist_freshness.py --watchlist seller-watchlist.csv
+
+# 間隔を変えたい場合（デフォルトは評価90日・チェック14日）
+python3 check_watchlist_freshness.py --watchlist seller-watchlist.csv \
+    --evaluation-interval-days 90 --check-interval-days 14
+```
+
+このスクリプトは2種類のリストを出力する：
+
+- **品質の再評価が必要なセラー**：`last_evaluated_date`が指定日数（デフォルト90日）
+  以上前、または未評価のセラー全員（ランク問わず）
+- **新着出品の確認が必要なセラー**：`quality_rating`がS/Aのセラーのうち、
+  `last_checked_date`が指定日数（デフォルト14日）以上前のセラー
+  （B/C評価のセラーは定点観測の対象外なのでここには出てこない）
+
 ### ②セラーの出品商品を確認する（`seller-products-template.csv`）
 
 - ①のリストから**3〜5セラーずつ**選んで進める（一度に全部やらない）
@@ -82,6 +117,7 @@
 | `seller-products-template.csv` | ②Amazon側で確認した商品リスト（型番・価格・出品者数等） |
 | `astra-prompt-rakuten-check.md` | ③楽天側確認をAstraに依頼するプロンプト |
 | `merge_seller_research.py` | ④②③の結果を自動突合し、`analyze.py`用CSVに整形するスクリプト |
+| `check_watchlist_freshness.py` | セラーリストの鮮度チェック（品質の再評価・新着出品確認が必要なセラーの一覧表示） |
 
 ## 注意事項
 

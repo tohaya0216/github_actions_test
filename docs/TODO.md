@@ -62,12 +62,22 @@
 - [x] **②③の結果を統合するスクリプトを作成**（2026-09-22）。`merge_seller_research.py`が
       Amazon側・楽天側のCSVを商品名で自動突合し、在庫なし・転売禁止・型番不一致を
       自動除外した上で`analyze.py`用CSVを出力する。動作確認済み
-- [ ] **セラーリサーチを実行する（4段階）**：
+- [x] **セラーリストの質による絞り込み運用を追加**（2026-09-22）。セラーが多くなるほど
+      毎回全セラーを定点観測するのは負担が増えるため、`seller-watchlist.csv`に
+      `quality_rating`（S/A/B/C）・`last_evaluated_date`列を追加。初回は広く集めて
+      全セラーを一度評価（quality_ratingを付与）→以降の定点観測はS/Aランクのみ
+      `last_checked_date`ベースで追跡（B/Cは`status=excluded`で対象外）→評価自体は
+      数ヶ月に一度（デフォルト90日）やり直しリストを新鮮に保つ、という2段階運用にした。
+      鮮度チェックを自動化する`check_watchlist_freshness.py`を新規作成し、
+      ダミーデータ5パターン（新鮮・陳腐化・Bランク除外・未評価・境界値日数）で動作確認済み
+- [ ] **セラーリサーチを実行する（4段階＋質による絞り込み）**：
       ①Amazon上で評価数50〜400件・複数ブランド扱いのセラーを20〜30件探し
       `seller-watchlist.csv`に記録 → ②うち3〜5セラーを選び、**Keepa有料プランの
       エクスポート機能**で出品商品・型番・出品者数・ランキング推移を`seller-products.csv`に
       記録 → ③型番リストを`astra-prompt-rakuten-check.md`でAstraに渡し楽天側を確認 →
-      ④`merge_seller_research.py`で統合して`analyze.py`で判定、`research-log/`に集計
+      ④`merge_seller_research.py`で統合して`analyze.py`で判定、`research-log/`に集計 →
+      ⑤判定結果をもとに各セラーの`quality_rating`を`seller-watchlist.csv`に記録し、
+      以降はS/Aランクのセラーだけ`check_watchlist_freshness.py`で鮮度を追う
 - [x] **事業用の専用メールアドレスを取得する**（無料のGmail等でよい）。取得済み（2026-09-22）。
       ※実際のアドレスはこのリポジトリには記載しない（公開・共有される可能性があるため）。
       Amazon出品用アカウント（Seller Central）の登録に使い、請求書・注文確認メールの
