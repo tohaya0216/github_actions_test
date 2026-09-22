@@ -30,10 +30,16 @@
       作成（`docs/phase0-kit/astra-prompt-batch3-effects.md`）。バッチ2の反省
       （型番不一致の見落とし、価格ソースの誤り）を踏まえ、型番完全一致の確認・PSE確認・
       単価帯1,500〜8,000円・大手ブランド除外を明記済み（2026-09-22）
-- [ ] **Phase 0バッチ3をAstraに依頼し、結果を`analyze.py`で判定する**：
-      `astra-prompt-batch3-effects.md`をAstraに渡して10〜20件収集。楽天側は自動収集できる
-      見込みだが、**Amazon側は前回同様ブロックされる可能性が高いため、その場合は人力で確認**
-      （前回のB2-010と同じ流れ）
+- [x] **Phase 0バッチ3（楽天側）取得完了**（2026-09-22）。Astraに依頼し10件取得。
+      想定通りAmazon側はアクセス拒否され空欄（今回はAstraが無理な回避を試みず正直に報告）。
+      結果は`research-log/2026-09-22-effects-pedals-rakuten-only.csv`参照。
+      楽天側データのみで3件が売り切れ、**1件がショップの転売購入拒否方針により除外**（新発見。
+      詳細はresearch-log参照）、残り6件がAmazon側確認待ち
+- [ ] **Phase 0バッチ3（Amazon側）を人力で確認する**：有効候補6件
+      （Effects Bakery Bagel OverDrive／One Control Minimal Series AB Box／
+      Effects Bakery Croissant Distortion／French Bread Delay／Plain Bread Compressor／
+      Curry Bread Junction Box）についてAmazon価格・出品者・手数料を確認する。
+      検索URLはチャットで案内済み。B3-007/008は「NEW」版かどうかの確認に特に注意
 - [x] **事業用の専用メールアドレスを取得する**（無料のGmail等でよい）。取得済み（2026-09-22）。
       ※実際のアドレスはこのリポジトリには記載しない（公開・共有される可能性があるため）。
       Amazon出品用アカウント（Seller Central）の登録に使い、請求書・注文確認メールの
