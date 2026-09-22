@@ -26,6 +26,9 @@ CSVの列（ヘッダー名は固定。順不同で可）:
                             実際の判定にはAmazon Revenue Calculatorの数値を使うこと）
     fba_fee                 FBA配送代行手数料（円。空欄なら0として計算）
     estimated_monthly_sales Keepaのランキング推移等から見積もった月間販売個数の目安
+    seller_count            Amazon商品ページで確認できる出品者数（人数）。空欄なら未確認扱い。
+                            1〜2人（LOW_SELLER_COUNT_THRESHOLD以下）はメーカー・ブランドが
+                            直接出品している可能性が高い危険信号として即座にC判定にする
     seller_count_spike      出品者数が急増しているか（yes/no。空欄は「未確認」として扱われ、
                             自動的にB判定に留め置かれる。「no」と明記した場合のみ確認済み扱い）
     amazon_itself_selling   Amazon本体が出品しているか（yes/no。空欄の扱いは上記と同じ）
@@ -43,6 +46,7 @@ CSVの列（ヘッダー名は固定。順不同で可）:
     MIN_PROFIT_YEN         15-2: 粗利1,000円以上（当初の1,500円は上振れケースとして扱う）
     MIN_MONTHLY_SALES      11-3: 月3個以上売れている実績
     STRESS_DROP_1 / 2      15-3: 現在価格から-10%/-20%の価格下落ストレステスト
+    LOW_SELLER_COUNT_THRESHOLD  11-3: 出品者数がこの値以下ならメーカー直接出品を警戒
 """
 
 import argparse
@@ -59,6 +63,7 @@ CONFIG = {
     "MIN_MONTHLY_SALES": 3,             # 11-3: 月3個以上売れている実績
     "STRESS_DROP_1": 0.10,              # 15-3: -10%ストレステスト
     "STRESS_DROP_2": 0.20,              # 15-3: -20%ストレステスト
+    "LOW_SELLER_COUNT_THRESHOLD": 2,    # 11-3: 出品者数がこれ以下ならメーカー直接出品を警戒
 }
 
 REQUIRED_COLUMNS = ["asin", "rakuten_price", "amazon_price"]
@@ -108,6 +113,7 @@ class Candidate:
     referral_fee_rate: float
     fba_fee: float
     estimated_monthly_sales: object  # float または None（未確認）
+    seller_count: object             # float または None（未確認）
     seller_count_spike: object       # bool または None（未確認）
     amazon_itself_selling: object    # bool または None（未確認）
     is_famous_brand: object          # bool または None（未確認）
@@ -159,6 +165,14 @@ class Candidate:
             hard_fail_reasons.append("出品者数が急増している（値崩れの波を警戒）")
         elif self.seller_count_spike is None:
             unknown_reasons.append("出品者数の急増有無が未確認")
+
+        if self.seller_count is None:
+            unknown_reasons.append("出品者数が未確認")
+        elif self.seller_count <= CONFIG["LOW_SELLER_COUNT_THRESHOLD"]:
+            hard_fail_reasons.append(
+                f"出品者数が少なすぎる（{self.seller_count}人 <= {CONFIG['LOW_SELLER_COUNT_THRESHOLD']}人。"
+                f"メーカー/ブランド直接出品の可能性）"
+            )
 
         if self.estimated_monthly_sales is None:
             unknown_reasons.append("月間販売数が未確認")
@@ -222,6 +236,7 @@ def load_candidates(path: Path) -> list:
                     ),
                     fba_fee=to_float(row.get("fba_fee"), 0.0),
                     estimated_monthly_sales=to_float_optional(row.get("estimated_monthly_sales")),
+                    seller_count=to_float_optional(row.get("seller_count")),
                     seller_count_spike=to_tri_bool(row.get("seller_count_spike")),
                     amazon_itself_selling=to_tri_bool(row.get("amazon_itself_selling")),
                     is_famous_brand=to_tri_bool(row.get("is_famous_brand")),
@@ -253,7 +268,7 @@ def tri_bool_str(value) -> str:
 def write_result(candidates: list, out_path: Path) -> None:
     fieldnames = [
         "asin", "product_name", "rakuten_price", "point_rebate_rate", "amazon_price",
-        "referral_fee_rate", "fba_fee", "estimated_monthly_sales",
+        "referral_fee_rate", "fba_fee", "estimated_monthly_sales", "seller_count",
         "seller_count_spike", "amazon_itself_selling", "is_famous_brand",
         "effective_cost", "profit", "profit_margin",
         "stress10_profit", "stress20_profit", "break_even_price",
@@ -272,6 +287,7 @@ def write_result(candidates: list, out_path: Path) -> None:
                 "referral_fee_rate": c.referral_fee_rate,
                 "fba_fee": c.fba_fee,
                 "estimated_monthly_sales": c.estimated_monthly_sales if c.estimated_monthly_sales is not None else "未確認",
+                "seller_count": c.seller_count if c.seller_count is not None else "未確認",
                 "seller_count_spike": tri_bool_str(c.seller_count_spike),
                 "amazon_itself_selling": tri_bool_str(c.amazon_itself_selling),
                 "is_famous_brand": tri_bool_str(c.is_famous_brand),

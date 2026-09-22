@@ -60,16 +60,28 @@
    記載があれば、その商品は仕入れ候補から除外対象としてnotesに明記する
 6. その商品・ブランドが、**日本国内である程度知名度のあるブランドかどうか**を判断する
    （分からなければ空欄にする。安易に「無名」と決めつけないこと）
-7. Amazonの「FBA料金シミュレーター」（Revenue Calculator、Seller Centralからアクセス可）で、
+7. **Amazon商品ページで確認できる出品者数（人数）を記録する**。1〜2人しかいない場合は
+   メーカー・ブランドが直接出品している可能性が高い危険信号なので、その旨をnotesに明記する
+8. Amazonの「FBA料金シミュレーター」（Revenue Calculator、Seller Centralからアクセス可）で、
    その商品の**実際の販売手数料額・FBA配送代行手数料額**を調べる
-8. 調査にかかったおおよその時間（分）をメモする
+9. 調査にかかったおおよその時間（分）をメモする
+
+## 補足：候補が見つかりにくい場合は「セラーリサーチ」も試す
+
+ジャンル検索で候補が枯渇してきた場合、以下の方法も試してよい。
+
+- Amazon上で、出品者数が少なめ・評価数50〜400件程度の、いかにも個人で電脳せどりを
+  行っていそうなセラーを1人見つける
+- そのセラーの出品リスト全体を確認し、同様の条件（無名ブランド・単価帯1,500〜8,000円）に
+  合う商品が他にもないか探す
+- 見つかったら、通常の手順（楽天側価格確認・型番一致確認・PSE確認等）を同様に行う
 
 ## 出力フォーマット
 
 以下の列名・順序のCSV形式で、ヘッダー行つきで出力すること。
 
 ```
-asin,product_name,rakuten_price,point_rebate_rate,amazon_price,referral_fee_rate,fba_fee,estimated_monthly_sales,seller_count_spike,amazon_itself_selling,is_famous_brand,research_minutes,notes
+asin,product_name,rakuten_price,point_rebate_rate,amazon_price,referral_fee_rate,fba_fee,estimated_monthly_sales,seller_count,seller_count_spike,amazon_itself_selling,is_famous_brand,research_minutes,notes
 ```
 
 | 列名 | 入力内容 |
@@ -82,6 +94,7 @@ asin,product_name,rakuten_price,point_rebate_rate,amazon_price,referral_fee_rate
 | `referral_fee_rate` | Revenue Calculatorで確認した販売手数料率（0〜1の小数） |
 | `fba_fee` | Revenue Calculatorで確認したFBA配送代行手数料（円） |
 | `estimated_monthly_sales` | 分からなければ空欄 |
+| `seller_count` | Amazon出品者数（人数）。1〜2人なら特に注意してnotesに明記。分からなければ空欄 |
 | `seller_count_spike` | 分からなければ空欄 |
 | `amazon_itself_selling` | 確認できた場合のみyes/no。確認できなければ空欄 |
 | `is_famous_brand` | 判断できた場合のみyes/no。迷ったら空欄 |

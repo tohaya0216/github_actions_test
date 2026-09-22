@@ -38,8 +38,15 @@
 - [ ] **Phase 0バッチ3（Amazon側）を人力で確認する**：有効候補6件
       （Effects Bakery Bagel OverDrive／One Control Minimal Series AB Box／
       Effects Bakery Croissant Distortion／French Bread Delay／Plain Bread Compressor／
-      Curry Bread Junction Box）についてAmazon価格・出品者・手数料を確認する。
-      検索URLはチャットで案内済み。B3-007/008は「NEW」版かどうかの確認に特に注意
+      Curry Bread Junction Box）についてAmazon価格・出品者数・手数料を確認する。
+      検索URLはチャットで案内済み。B3-007/008は「NEW」版かどうかの確認に特に注意。
+      **出品者数が1〜2人ならメーカー直接出品の危険信号として除外**（11-3、新基準）
+- [x] **`analyze.py`に出品者数チェック機能を追加**（2026-09-22）。CSVに`seller_count`列を
+      新設し、出品者数1〜2人を即座にC判定にするようツールを拡張。実務家のセラーリサーチ
+      知見（評価数50〜400件が狙い目、出品者数1〜2人は危険信号）を11-3・7-2に反映済み
+- [ ] **次バッチ以降で「セラーリサーチ」を試す**：ジャンル検索で候補が枯渇したら、
+      評価数50〜400件・出品者数少なめのセラーを1人見つけ、その出品リスト全体を確認する
+      補完的な探し方を使う（7-2参照）
 - [x] **事業用の専用メールアドレスを取得する**（無料のGmail等でよい）。取得済み（2026-09-22）。
       ※実際のアドレスはこのリポジトリには記載しない（公開・共有される可能性があるため）。
       Amazon出品用アカウント（Seller Central）の登録に使い、請求書・注文確認メールの
