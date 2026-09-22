@@ -1,0 +1,2 @@
+seller_id,asin,product_name,amazon_price,seller_count,seller_count_spike,amazon_itself_selling,estimated_monthly_sales,is_famous_brand,first_seen_date,notes
+S001,B0EXAMPLE1,【サンプル】ダミー工具セット TU-XX,4980,4,no,no,8,no,2026-09-22,ダミーデータ。Keepaのランキング推移から月間販売数を目安で記入。型番は必ずproduct_nameに含める（楽天側の型番一致確認に使うため）

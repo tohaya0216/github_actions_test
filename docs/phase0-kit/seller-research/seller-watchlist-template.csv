@@ -1,0 +1,2 @@
+seller_id,seller_name,seller_url,review_count,category_tendency,first_checked_date,last_checked_date,status,notes
+S001,【サンプル】ダミーストア,https://www.amazon.co.jp/sp?seller=EXAMPLE1,180,楽器アクセサリー・DIY工具,2026-09-22,2026-09-22,active,ダミーデータ。実際のセラーIDに置き換えて使う
