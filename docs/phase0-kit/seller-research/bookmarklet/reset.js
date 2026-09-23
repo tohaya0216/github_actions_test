@@ -16,10 +16,17 @@
   try {
     var res = await fetch(apiUrl, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({ action: "resetSeen", secret: apiSecret }),
     });
-    var result = await res.json();
+    var text = await res.text();
+    var result;
+    try {
+      result = JSON.parse(text);
+    } catch (parseErr) {
+      throw new Error("応答がJSONではありません（先頭200文字）: " + text.slice(0, 200));
+    }
     if (result && result.ok) {
       alert("リセットしました。");
     } else {

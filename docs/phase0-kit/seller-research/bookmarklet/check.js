@@ -16,7 +16,7 @@
 // 注意：browser-extension/content.js と同様、実機でのAmazon動作は未確認。
 
 (async function () {
-  var VERSION = "0.3.0";
+  var VERSION = "0.3.1";
   var VENDOR_KEYWORDS = [
     "専門店", "代理店", "正規販売店", "正規取扱店",
     "オフィシャルショップ", "オフィシャルストア",
@@ -121,13 +121,23 @@
     return { apiUrl: apiUrl, apiSecret: apiSecret };
   }
 
+  async function parseJsonResponse(res) {
+    var text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      throw new Error("応答がJSONではありません（先頭200文字）: " + text.slice(0, 200));
+    }
+  }
+
   async function apiGet(cfg, action) {
     var url =
       cfg.apiUrl +
       "?action=" + encodeURIComponent(action) +
       "&secret=" + encodeURIComponent(cfg.apiSecret);
-    var res = await fetch(url);
-    return res.json();
+    // credentials: "include" でscript.google.comのログインCookieを一緒に送る。
+    var res = await fetch(url, { credentials: "include" });
+    return parseJsonResponse(res);
   }
 
   async function apiPost(cfg, action, payload) {
@@ -135,10 +145,11 @@
     // text/plainにすることでCORSプリフライト（OPTIONS）を回避する。
     var res = await fetch(cfg.apiUrl, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(body),
     });
-    return res.json();
+    return parseJsonResponse(res);
   }
 
   var config = getApiConfig();

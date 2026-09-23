@@ -1,19 +1,29 @@
 const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
 const DEFAULT_API = { apiUrl: "", apiSecret: "" };
 
+async function parseJsonResponse(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error("応答がJSONではありません（先頭200文字）: " + text.slice(0, 200));
+  }
+}
+
 async function apiPost(apiUrl, apiSecret, action, payload) {
   const res = await fetch(apiUrl, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify({ action, secret: apiSecret, ...payload }),
   });
-  return res.json();
+  return parseJsonResponse(res);
 }
 
 async function apiGet(apiUrl, apiSecret, action) {
   const url = `${apiUrl}?action=${encodeURIComponent(action)}&secret=${encodeURIComponent(apiSecret)}`;
-  const res = await fetch(url);
-  return res.json();
+  const res = await fetch(url, { credentials: "include" });
+  return parseJsonResponse(res);
 }
 
 async function loadApiConfig() {

@@ -17,7 +17,7 @@
   // manifest.jsonのversionと手動で合わせる。画面上のステータス表示にも出すことで、
   // Kiwi Browser等で「再読み込みが本当に反映されたか」を拡張機能管理画面を
   // 開かずにその場で確認できるようにする（2026-09-23追加）。
-  const VERSION = "0.3.0";
+  const VERSION = "0.3.1";
   const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
   const LOG_PREFIX = "[seller-watch]";
 
@@ -196,8 +196,18 @@
     if (!apiUrl || !apiSecret) return null;
     try {
       const url = `${apiUrl}?action=${encodeURIComponent(action)}&secret=${encodeURIComponent(apiSecret)}`;
-      const res = await fetch(url);
-      return await res.json();
+      // credentials: "include" でscript.google.comのログインCookieを一緒に送る。
+      // 省略するとクロスオリジンではCookieが付かず、Googleがアカウントを
+      // 特定できずログイン/アカウント選択のHTMLページを返してくることがある
+      // （2026-09-23、実機の接続テストで発覚）。
+      const res = await fetch(url, { credentials: "include" });
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch (parseErr) {
+        log("API応答がJSONではありません（HTML等が返っている可能性）:", text.slice(0, 200));
+        return null;
+      }
     } catch (e) {
       log("API GET失敗:", e);
       return null;
@@ -210,12 +220,19 @@
     try {
       const res = await fetch(apiUrl, {
         method: "POST",
+        credentials: "include",
         // text/plainにすることでCORSプリフライト（OPTIONS）を回避する。
         // Apps Script側はContent-Typeに関係なく本文をJSONとしてパースする。
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action, secret: apiSecret, ...payload }),
       });
-      return await res.json();
+      const text = await res.text();
+      try {
+        return JSON.parse(text);
+      } catch (parseErr) {
+        log("API応答がJSONではありません（HTML等が返っている可能性）:", text.slice(0, 200));
+        return null;
+      }
     } catch (e) {
       log("API POST失敗:", e);
       return null;

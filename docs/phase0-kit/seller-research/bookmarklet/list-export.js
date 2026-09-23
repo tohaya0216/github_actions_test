@@ -31,8 +31,14 @@
     apiUrl + "?action=getWatchlist&secret=" + encodeURIComponent(apiSecret);
   var result;
   try {
-    var res = await fetch(url);
-    result = await res.json();
+    // credentials: "include" でscript.google.comのログインCookieを一緒に送る。
+    var res = await fetch(url, { credentials: "include" });
+    var text = await res.text();
+    try {
+      result = JSON.parse(text);
+    } catch (parseErr) {
+      throw new Error("応答がJSONではありません（先頭200文字）: " + text.slice(0, 200));
+    }
   } catch (e) {
     alert("共有データストアに接続できませんでした: " + e.message);
     return;
