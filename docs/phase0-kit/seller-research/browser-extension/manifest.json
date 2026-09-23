@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "電脳せどり セラーウォッチ検出（個人用）",
+  "version": "0.1.0",
+  "description": "Amazon商品ページ・出品者ページを開いた際に、評価数が条件レンジ内の未チェックセラーを検出し、監視リストへの追加を確認する個人用ツール。追加の通信は一切行わず、現在表示中のページの内容のみを読み取る。",
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.amazon.co.jp/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://www.amazon.co.jp/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "セラーウォッチ検出リスト"
+  }
+}
