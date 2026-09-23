@@ -33,6 +33,11 @@
   color: #333;
 }
 
+.sw-status-no-api {
+  background: #fff3cd;
+  color: #7a4a00;
+}
+
 #sw-detector-banner {
   position: fixed;
   bottom: 16px;

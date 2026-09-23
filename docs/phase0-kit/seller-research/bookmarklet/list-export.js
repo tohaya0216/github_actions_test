@@ -1,13 +1,18 @@
 // セラーウォッチ検出：候補一覧をCSVとして表示（ブックマークレット版・可読ソース）
 //
-// check.js で localStorage に溜めた候補一覧を、seller-watchlist-template.csv
-// と同じ列構成のCSVテキストとして prompt() に表示する。prompt() のテキストは
-// 全選択・コピーできるので、スマホでもクリップボード権限なしでコピーできる。
+// 共有データストア（Google Apps Script）のWatchlistシートから現在の一覧を
+// 取得し、seller-watchlist-template.csvと同じ列構成のCSVテキストとして
+// prompt()に表示する。prompt()のテキストは全選択・コピーできるので、
+// スマホでもクリップボード権限なしでコピーできる。
+//
+// 注：データはスプレッドシートを直接開いても確認できる。このスクリプトは
+// 「開かずにその場でCSVとしてコピーしたい」場合の補助。
 
-(function () {
-  var watchlist = JSON.parse(localStorage.getItem("sw_watchlist") || "[]");
-  if (watchlist.length === 0) {
-    alert("追加済みの候補はまだありません。");
+(async function () {
+  var apiUrl = localStorage.getItem("sw_api_url");
+  var apiSecret = localStorage.getItem("sw_api_secret");
+  if (!apiUrl || !apiSecret) {
+    alert("共有データストアが未設定です。先にcheck.jsを一度実行して設定してください。");
     return;
   }
 
@@ -22,14 +27,35 @@
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
 
+  var url =
+    apiUrl + "?action=getWatchlist&secret=" + encodeURIComponent(apiSecret);
+  var result;
+  try {
+    var res = await fetch(url);
+    result = await res.json();
+  } catch (e) {
+    alert("共有データストアに接続できませんでした: " + e.message);
+    return;
+  }
+  if (!result || !result.ok) {
+    alert("応答が異常です: " + JSON.stringify(result));
+    return;
+  }
+
+  var rows = result.rows || [];
+  if (rows.length === 0) {
+    alert("追加済みの候補はまだありません。");
+    return;
+  }
+
   var lines = [header.join(",")];
-  watchlist.forEach(function (row) {
+  rows.forEach(function (row) {
     lines.push(header.map(function (key) { return esc(row[key]); }).join(","));
   });
 
   var csv = lines.join("\r\n");
   prompt(
-    watchlist.length + "件。下のテキストを全選択してコピーしてください（seller-watchlist.csvへの貼り付け用）:",
+    rows.length + "件。下のテキストを全選択してコピーしてください（seller-watchlist.csvへの貼り付け用）:",
     csv
   );
 })();

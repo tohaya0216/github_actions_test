@@ -1,9 +1,12 @@
 // セラーウォッチ検出（個人用コンテンツスクリプト）
 //
 // 現在開いているAmazon商品ページ・出品者一覧パネル・出品者ストアページの
-// DOM（表示中の内容）だけを読み取り、追加の通信は一切行わない。
+// DOM（表示中の内容）だけを読み取り、Amazonへの追加通信は一切行わない。
 // 評価数が条件レンジ内かつ未チェックのセラーを見つけたら、画面右下に
-// 確認バナーを出し、「監視リストに追加」ボタンでchrome.storage.localに保存する。
+// 確認バナーを出す。判定履歴・監視リストは、PC/Kiwi/ブックマークレットで
+// 共有するため、Google Apps Script経由でスプレッドシートに保存する
+// （設定方法は ../apps-script/README.md 参照。Amazonへの通信は増えない。
+// 通信先はscript.google.comのみ）。
 //
 // 注意：Amazonのページ構造（クラス名・id）は変わることがあり、この実装は
 // ネットワークが使えない開発環境で作成したため実機での動作未確認。
@@ -14,7 +17,7 @@
   // manifest.jsonのversionと手動で合わせる。画面上のステータス表示にも出すことで、
   // Kiwi Browser等で「再読み込みが本当に反映されたか」を拡張機能管理画面を
   // 開かずにその場で確認できるようにする（2026-09-23追加）。
-  const VERSION = "0.2.0";
+  const VERSION = "0.3.0";
   const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
   const LOG_PREFIX = "[seller-watch]";
 
@@ -177,28 +180,68 @@
   }
 
   async function getSettings() {
-    return chrome.storage.sync.get(DEFAULT_SETTINGS);
+    return chrome.storage.local.get(DEFAULT_SETTINGS);
   }
 
+  async function getApiConfig() {
+    return chrome.storage.local.get({ apiUrl: "", apiSecret: "" });
+  }
+
+  // PC/Kiwi/ブックマークレットで判定履歴・監視リストを共有するための
+  // Google Apps Script API呼び出し（2026-09-23追加）。詳細は
+  // ../apps-script/README.md参照。通信先はscript.google.comのみで、
+  // Amazonへの通信は増えない。
+  async function apiGet(action) {
+    const { apiUrl, apiSecret } = await getApiConfig();
+    if (!apiUrl || !apiSecret) return null;
+    try {
+      const url = `${apiUrl}?action=${encodeURIComponent(action)}&secret=${encodeURIComponent(apiSecret)}`;
+      const res = await fetch(url);
+      return await res.json();
+    } catch (e) {
+      log("API GET失敗:", e);
+      return null;
+    }
+  }
+
+  async function apiPost(action, payload) {
+    const { apiUrl, apiSecret } = await getApiConfig();
+    if (!apiUrl || !apiSecret) return null;
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        // text/plainにすることでCORSプリフライト（OPTIONS）を回避する。
+        // Apps Script側はContent-Typeに関係なく本文をJSONとしてパースする。
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action, secret: apiSecret, ...payload }),
+      });
+      return await res.json();
+    } catch (e) {
+      log("API POST失敗:", e);
+      return null;
+    }
+  }
+
+  // 戻り値: 検出済みセラーのマップ、または共有データストア未設定/到達不可の場合null
   async function getSeenSellers() {
-    const { seenSellers } = await chrome.storage.local.get({
-      seenSellers: {},
-    });
-    return seenSellers;
+    const result = await apiGet("getSeen");
+    if (!result || !result.ok) return null;
+    return result.seen || {};
   }
 
-  async function markSeen(sellerId, status) {
-    const seenSellers = await getSeenSellers();
-    seenSellers[sellerId] = { status, checkedAt: new Date().toISOString() };
-    await chrome.storage.local.set({ seenSellers });
+  async function markSeenBatch(items) {
+    if (!items.length) return;
+    await apiPost("markSeen", {
+      items: items.map((i) => ({
+        seller_id: i.sellerId,
+        status: i.status,
+        checked_at: new Date().toISOString(),
+      })),
+    });
   }
 
-  async function addToWatchlist(entry) {
-    const { watchlistEntries = [] } = await chrome.storage.local.get({
-      watchlistEntries: [],
-    });
-    watchlistEntries.push(entry);
-    await chrome.storage.local.set({ watchlistEntries });
+  async function addToWatchlist(row) {
+    await apiPost("addWatchlist", { row });
   }
 
   function buildWatchlistRow(candidate) {
@@ -256,14 +299,14 @@
         .getElementById("sw-detector-add")
         .addEventListener("click", async () => {
           await addToWatchlist(buildWatchlistRow(candidate));
-          await markSeen(candidate.sellerId, "added");
+          await markSeenBatch([{ sellerId: candidate.sellerId, status: "added" }]);
           withoutTriggeringRescan(() => banner.remove());
           log("追加しました:", candidate);
         });
       document
         .getElementById("sw-detector-skip")
         .addEventListener("click", async () => {
-          await markSeen(candidate.sellerId, "skipped");
+          await markSeenBatch([{ sellerId: candidate.sellerId, status: "skipped" }]);
           withoutTriggeringRescan(() => banner.remove());
           log("スキップしました:", candidate);
         });
@@ -287,11 +330,20 @@
     const settings = await getSettings();
     const seenSellers = await getSeenSellers();
 
+    if (seenSellers === null) {
+      showStatus(
+        "共有データストア未設定（ツールバーアイコン→ポップアップから設定してください）",
+        "no-api"
+      );
+      return;
+    }
+
     let matchedAny = false;
     let newCount = 0;
     let outOfRangeCount = 0;
     let unknownCount = 0;
     let alreadySeenCount = 0;
+    const toMarkSeen = [];
 
     for (const c of candidates) {
       if (seenSellers[c.sellerId]) {
@@ -302,14 +354,14 @@
 
       if (c.ratingCount == null) {
         log("評価数を読み取れずスキップ:", c);
-        await markSeen(c.sellerId, "unknown_rating");
+        toMarkSeen.push({ sellerId: c.sellerId, status: "unknown_rating" });
         unknownCount++;
         continue;
       }
 
       if (c.ratingCount < settings.minRating || c.ratingCount > settings.maxRating) {
         log("レンジ外のためスキップ:", c);
-        await markSeen(c.sellerId, "out_of_range");
+        toMarkSeen.push({ sellerId: c.sellerId, status: "out_of_range" });
         outOfRangeCount++;
         continue;
       }
@@ -318,6 +370,10 @@
       showConfirmBanner(c);
       matchedAny = true;
       break; // 1回のスキャンで1件だけ表示する
+    }
+
+    if (toMarkSeen.length) {
+      await markSeenBatch(toMarkSeen);
     }
 
     if (!matchedAny) {

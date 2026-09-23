@@ -2,14 +2,21 @@
 //
 // browser-extension/content.js と同じ判定ロジックをブックマークレットとして
 // 移植したもの。スマホのブラウザ（Android Chrome等）でも、拡張機能をインストール
-// せずに同じ検出ができる。localStorage（amazon.co.jpのオリジン内）にデータを保存する。
+// せずに同じ検出ができる。
+//
+// 判定履歴・監視リストは、PC/Kiwi拡張機能と共有するため、Google Apps Script
+// 経由でスプレッドシートに保存する（設定方法は ../apps-script/README.md 参照）。
+// Amazonへの追加通信は増えない。通信先はscript.google.comのみ。
+// ウェブアプリURL・シークレットは初回実行時にprompt()で尋ね、以後は
+// このAmazon.co.jpページのlocalStorageに保存して再利用する。
 //
 // このファイルは読みやすさのためのソース。実際にブックマークとして登録するのは
 // README.md に載せてある1行に圧縮した javascript: 版。
 //
 // 注意：browser-extension/content.js と同様、実機でのAmazon動作は未確認。
 
-(function () {
+(async function () {
+  var VERSION = "0.3.0";
   var VENDOR_KEYWORDS = [
     "専門店", "代理店", "正規販売店", "正規取扱店",
     "オフィシャルショップ", "オフィシャルストア",
@@ -92,9 +99,55 @@
     return out;
   }
 
-  var seen = JSON.parse(localStorage.getItem("sw_seen") || "{}");
-  var candidates = collectCandidates();
+  function getApiConfig() {
+    var apiUrl = localStorage.getItem("sw_api_url");
+    var apiSecret = localStorage.getItem("sw_api_secret");
+    if (!apiUrl) {
+      apiUrl = prompt(
+        "【初回のみ】Google Apps ScriptのウェブアプリURLを入力してください:",
+        ""
+      );
+      if (!apiUrl) return null;
+    }
+    if (!apiSecret) {
+      apiSecret = prompt(
+        "【初回のみ】シークレットを入力してください（Code.gsのSHARED_SECRETと同じ値）:",
+        ""
+      );
+      if (!apiSecret) return null;
+    }
+    localStorage.setItem("sw_api_url", apiUrl);
+    localStorage.setItem("sw_api_secret", apiSecret);
+    return { apiUrl: apiUrl, apiSecret: apiSecret };
+  }
 
+  async function apiGet(cfg, action) {
+    var url =
+      cfg.apiUrl +
+      "?action=" + encodeURIComponent(action) +
+      "&secret=" + encodeURIComponent(cfg.apiSecret);
+    var res = await fetch(url);
+    return res.json();
+  }
+
+  async function apiPost(cfg, action, payload) {
+    var body = Object.assign({ action: action, secret: cfg.apiSecret }, payload);
+    // text/plainにすることでCORSプリフライト（OPTIONS）を回避する。
+    var res = await fetch(cfg.apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  }
+
+  var config = getApiConfig();
+  if (!config) {
+    alert("URL・シークレットが未入力のため中止しました。もう一度実行してください。");
+    return;
+  }
+
+  var candidates = collectCandidates();
   if (candidates.length === 0) {
     alert(
       "セラー情報が見つかりませんでした。「他の出品を見る」を開いた状態、または出品者ページで試してください。"
@@ -102,25 +155,44 @@
     return;
   }
 
+  var seenResult;
+  try {
+    seenResult = await apiGet(config, "getSeen");
+  } catch (e) {
+    alert("共有データストアに接続できませんでした: " + e.message);
+    return;
+  }
+  if (!seenResult || !seenResult.ok) {
+    alert(
+      "共有データストアの応答が異常です。URL・シークレットを確認してください（" +
+        JSON.stringify(seenResult) + "）"
+    );
+    return;
+  }
+  var seen = seenResult.seen || {};
+
   var target = null;
+  var toMarkSeen = [];
   for (var i = 0; i < candidates.length; i++) {
     var c = candidates[i];
     if (seen[c.id]) continue;
     if (c.rating == null) {
-      seen[c.id] = { status: "unknown_rating" };
+      toMarkSeen.push({ seller_id: c.id, status: "unknown_rating" });
       continue;
     }
     if (c.rating < MIN_RATING || c.rating > MAX_RATING) {
-      seen[c.id] = { status: "out_of_range" };
+      toMarkSeen.push({ seller_id: c.id, status: "out_of_range" });
       continue;
     }
     target = c;
     break;
   }
-  localStorage.setItem("sw_seen", JSON.stringify(seen));
+  if (toMarkSeen.length) {
+    await apiPost(config, "markSeen", { items: toMarkSeen });
+  }
 
   if (!target) {
-    alert("条件に合う新規セラーは見つかりませんでした。");
+    alert("SW v" + VERSION + ": 条件に合う新規セラーは見つかりませんでした。");
     return;
   }
 
@@ -133,9 +205,8 @@
   msg += "\n\n監視リストに追加しますか？";
 
   if (confirm(msg)) {
-    var watchlist = JSON.parse(localStorage.getItem("sw_watchlist") || "[]");
     var today = new Date().toISOString().slice(0, 10);
-    watchlist.push({
+    var row = {
       seller_id: target.id,
       seller_name: target.name || "",
       seller_url: "https://www.amazon.co.jp/sp?seller=" + target.id,
@@ -149,13 +220,11 @@
       notes:
         "ブックマークレットで検出（" + target.url + "）" +
         (target.vendor ? " ／ 要注意:店名に「" + target.vendor + "」を含む" : ""),
-    });
-    localStorage.setItem("sw_watchlist", JSON.stringify(watchlist));
-    seen[target.id] = { status: "added" };
-    localStorage.setItem("sw_seen", JSON.stringify(seen));
+    };
+    await apiPost(config, "addWatchlist", { row: row });
+    await apiPost(config, "markSeen", { items: [{ seller_id: target.id, status: "added" }] });
     alert("追加しました。");
   } else {
-    seen[target.id] = { status: "skipped" };
-    localStorage.setItem("sw_seen", JSON.stringify(seen));
+    await apiPost(config, "markSeen", { items: [{ seller_id: target.id, status: "skipped" }] });
   }
 })();
