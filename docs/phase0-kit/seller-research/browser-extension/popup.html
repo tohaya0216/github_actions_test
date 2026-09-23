@@ -54,14 +54,14 @@
     <h1>共有データストアの設定</h1>
     <p class="hint">
       PC・Kiwi Browser・ブックマークレットで判定履歴・監視リストを共有する
-      ためのGoogle Apps Script設定。手順は
-      <code>apps-script/README.md</code>参照。
+      ためのAirtable設定。手順は
+      <code>airtable/README.md</code>参照。
     </p>
     <div class="settings-row">
-      <label for="api-url">ウェブアプリのURL</label>
-      <input type="text" id="api-url" placeholder="https://script.google.com/macros/s/.../exec" />
-      <label for="api-secret">シークレット</label>
-      <input type="password" id="api-secret" placeholder="Code.gsのSHARED_SECRETと同じ値" />
+      <label for="airtable-base-id">Base ID</label>
+      <input type="text" id="airtable-base-id" placeholder="appXXXXXXXXXXXXXX" />
+      <label for="airtable-token">Personal Access Token</label>
+      <input type="password" id="airtable-token" placeholder="patXXXXXXXXXXXXXX..." />
       <button id="save-api">保存</button>
       <button id="test-api">接続テスト</button>
       <div id="connection-status"></div>

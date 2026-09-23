@@ -1,5 +1,6 @@
 const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
-const DEFAULT_API = { apiUrl: "", apiSecret: "" };
+const DEFAULT_AIRTABLE = { airtableBaseId: "", airtableToken: "" };
+const AIRTABLE_API_BASE = "https://api.airtable.com/v0";
 
 async function parseJsonResponse(res) {
   const text = await res.text();
@@ -10,56 +11,51 @@ async function parseJsonResponse(res) {
   }
 }
 
-async function apiPost(apiUrl, apiSecret, action, payload) {
-  const res = await fetch(apiUrl, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, secret: apiSecret, ...payload }),
+async function airtableRequest(baseId, token, method, table, { query, body } = {}) {
+  let url = `${AIRTABLE_API_BASE}/${baseId}/${encodeURIComponent(table)}`;
+  if (query) url += `?${query}`;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
   });
-  return parseJsonResponse(res);
-}
-
-async function apiGet(apiUrl, apiSecret, action) {
-  const url = `${apiUrl}?action=${encodeURIComponent(action)}&secret=${encodeURIComponent(apiSecret)}`;
-  const res = await fetch(url, { credentials: "include" });
-  return parseJsonResponse(res);
+  const json = await parseJsonResponse(res);
+  if (!res.ok) throw new Error("Airtable APIエラー: " + JSON.stringify(json));
+  return json;
 }
 
 async function loadApiConfig() {
-  const { apiUrl, apiSecret } = await chrome.storage.local.get(DEFAULT_API);
-  document.getElementById("api-url").value = apiUrl;
-  document.getElementById("api-secret").value = apiSecret;
+  const { airtableBaseId, airtableToken } = await chrome.storage.local.get(DEFAULT_AIRTABLE);
+  document.getElementById("airtable-base-id").value = airtableBaseId;
+  document.getElementById("airtable-token").value = airtableToken;
 }
 
 async function saveApiConfig() {
-  const apiUrl = document.getElementById("api-url").value.trim();
-  const apiSecret = document.getElementById("api-secret").value.trim();
-  await chrome.storage.local.set({ apiUrl, apiSecret });
+  const airtableBaseId = document.getElementById("airtable-base-id").value.trim();
+  const airtableToken = document.getElementById("airtable-token").value.trim();
+  await chrome.storage.local.set({ airtableBaseId, airtableToken });
   alert("保存しました。");
 }
 
 async function testConnection() {
   const statusEl = document.getElementById("connection-status");
-  const apiUrl = document.getElementById("api-url").value.trim();
-  const apiSecret = document.getElementById("api-secret").value.trim();
-  if (!apiUrl || !apiSecret) {
-    statusEl.textContent = "URLとシークレットを入力してください。";
+  const airtableBaseId = document.getElementById("airtable-base-id").value.trim();
+  const airtableToken = document.getElementById("airtable-token").value.trim();
+  if (!airtableBaseId || !airtableToken) {
+    statusEl.textContent = "Base IDとTokenを入力してください。";
     statusEl.style.color = "#a00";
     return;
   }
   statusEl.textContent = "確認中…";
   statusEl.style.color = "#555";
   try {
-    const result = await apiGet(apiUrl, apiSecret, "getSeen");
-    if (result && result.ok) {
-      const count = Object.keys(result.seen || {}).length;
-      statusEl.textContent = `接続成功（検出済み${count}件を確認）`;
-      statusEl.style.color = "#0a0";
-    } else {
-      statusEl.textContent = `接続はできましたが応答が異常です: ${JSON.stringify(result)}`;
-      statusEl.style.color = "#a00";
-    }
+    const result = await airtableRequest(airtableBaseId, airtableToken, "GET", "Seen");
+    const count = (result.records || []).length;
+    statusEl.textContent = `接続成功（Seenテーブル${count}件を確認）`;
+    statusEl.style.color = "#0a0";
   } catch (e) {
     statusEl.textContent = `接続できませんでした: ${e.message}`;
     statusEl.style.color = "#a00";
@@ -84,8 +80,8 @@ async function saveSettings() {
 }
 
 async function resetSeen() {
-  const { apiUrl, apiSecret } = await chrome.storage.local.get(DEFAULT_API);
-  if (!apiUrl || !apiSecret) {
+  const { airtableBaseId, airtableToken } = await chrome.storage.local.get(DEFAULT_AIRTABLE);
+  if (!airtableBaseId || !airtableToken) {
     alert("先に共有データストアを設定してください。");
     return;
   }
@@ -93,8 +89,23 @@ async function resetSeen() {
     return;
   }
   try {
-    await apiPost(apiUrl, apiSecret, "resetSeen", {});
-    alert("リセットしました。");
+    // 全レコードIDを集めてから、10件ずつ削除する（Airtableの削除APIの上限）。
+    const ids = [];
+    let offset;
+    do {
+      const data = await airtableRequest(airtableBaseId, airtableToken, "GET", "Seen", {
+        query: offset ? `offset=${offset}` : undefined,
+      });
+      (data.records || []).forEach((r) => ids.push(r.id));
+      offset = data.offset;
+    } while (offset);
+
+    for (let i = 0; i < ids.length; i += 10) {
+      const chunk = ids.slice(i, i + 10);
+      const query = chunk.map((id) => `records[]=${encodeURIComponent(id)}`).join("&");
+      await airtableRequest(airtableBaseId, airtableToken, "DELETE", "Seen", { query });
+    }
+    alert(`リセットしました（${ids.length}件削除）。`);
   } catch (e) {
     alert(`リセットに失敗しました: ${e.message}`);
   }

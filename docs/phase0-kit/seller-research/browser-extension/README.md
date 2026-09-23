@@ -17,8 +17,8 @@ Amazon.co.jpの商品ページ（他の出品者パネル）や出品者スト�
 > （店名）（評価◯件）
 > 監視リストに追加しますか？　[追加する] [今回は追加しない]
 
-「追加する」を押すと、共有データストア（Googleスプレッドシート、下記参照）の
-Watchlistシートに、`seller-watchlist-template.csv`と同じ列構成で1行追加される
+「追加する」を押すと、共有データストア（Airtable、下記参照）のWatchlist
+テーブルに、`seller-watchlist-template.csv`と同じ列構成で1行追加される
 （`category_tendency`・`quality_rating`は空欄のまま出力される。これらは②③④の
 評価を経てから埋める列のため、拡張機能の役割はあくまで①の入口を広げることに
 限定している）。
@@ -27,17 +27,21 @@ Watchlistシートに、`seller-watchlist-template.csv`と同じ列構成で1行
 
 PCの拡張機能・Kiwi Browserの拡張機能・スマホのブックマークレットが、それぞれ
 別々にデータを持っていると、「PCで既にチェックしたセラーをスマホでまた検出
-してしまう」といった不便がある。これを解消するため、判定履歴（Seenシート）・
-監視リスト（Watchlistシート）を**Google Apps Script経由でGoogleスプレッドシート
-に保存**し、全端末で共有する。
+してしまう」といった不便がある。これを解消するため、判定履歴（Seenテーブル）・
+監視リスト（Watchlistテーブル）を**Airtable経由で保存**し、全端末で共有する。
 
-セットアップ手順は`../apps-script/README.md`参照。設定は拡張機能のポップアップ
-（ツールバーアイコン→ウェブアプリのURL・シークレットを入力→保存）で行う。
+（最初はGoogle Apps Script + スプレッドシートで実装したが、Googleアカウントが
+複数ログインしている環境で「意図しないアカウントに振り分けられて404になる」
+問題が実機で解消できず、Googleアカウントに依存しないAirtableに切り替えた。
+経緯は`../apps-script/README.md`参照）
+
+セットアップ手順は`../airtable/README.md`参照。設定は拡張機能のポップアップ
+（ツールバーアイコン→Base ID・Personal Access Tokenを入力→保存）で行う。
 未設定の場合、ページを開いても「共有データストア未設定」という表示が出るだけで、
 判定自体は動かない。
 
-**Amazonへの追加通信は増えない。** 通信先はGoogleのサーバー
-（script.google.com）のみで、これはAmazon側のボット検知・アクセス制限とは
+**Amazonへの追加通信は増えない。** 通信先はAirtableのサーバー
+（api.airtable.com）のみで、これはAmazon側のボット検知・アクセス制限とは
 無関係。
 
 ## 動いているか分かるようにする表示（2026-09-23追加）
@@ -78,8 +82,8 @@ PCの拡張機能・Kiwi Browserの拡張機能・スマホのブックマーク
 自動取得するようなことはしない（判定範囲を「評価数のみ」にした理由）。
 Amazonへの負荷・ボット検知の観点では、あなたが普段通りページを開く操作に
 上乗せして動くだけなので、通常のブラウジングと変わらない。共有データストア
-（Google Apps Script）への通信は発生するが、これはAmazonとは別のサーバー
-（script.google.com）宛てなので、Amazon側の検知とは無関係。
+（Airtable）への通信は発生するが、これはAmazonとは別のサーバー
+（api.airtable.com）宛てなので、Amazon側の検知とは無関係。
 
 ## 動作確認済み（2026-09-23）
 
@@ -103,13 +107,13 @@ Chrome DevTools（Kiwi Browserなら拡張機能一覧から開ける）のConso
 Chrome Web Storeには公開しない、ローカル読み込み専用の個人用拡張機能。
 PCのChrome/EdgeでもKiwi Browserでも手順は同じ。
 
-1. 先に`../apps-script/README.md`の手順で共有データストアを準備し、
-   ウェブアプリのURL・シークレットを控えておく
+1. 先に`../airtable/README.md`の手順で共有データストアを準備し、
+   Base ID・Personal Access Tokenを控えておく
 2. `chrome://extensions` を開く
 3. 右上の「デベロッパーモード」をONにする
 4. 「パッケージ化されていない拡張機能を読み込む」をクリックし、この
    `browser-extension` フォルダを選択する
-5. ツールバーアイコン→ポップアップを開き、ウェブアプリのURL・シークレットを
+5. ツールバーアイコン→ポップアップを開き、Base ID・Personal Access Tokenを
    入力して保存する（「接続テスト」で確認できる）
 6. Amazon.co.jpの商品ページ（「他の出品を見る」を開いた状態）や、
    出品者名をクリックして開くストアページ（URLに`?seller=...`を含む）で
@@ -129,7 +133,7 @@ PCのChrome/EdgeでもKiwi Browserでも手順は同じ。
 1. 普段通りAmazonで商品ページを巡回する（既存のリサーチ作業のついででよい）
 2. 条件に合うセラーが見つかったら都度「追加する」を押す（共有データストアに
    即座に保存される）
-3. たまったデータは、Googleスプレッドシートを直接開けばいつでも確認できる。
-   `../seller-watchlist.csv`へ転記したい場合は、スプレッドシートの
-   Watchlistタブから「ファイル」→「ダウンロード」→CSVでそのまま取得できる
-   （`quality_rating`等は空欄のまま。これは②③④の評価を経てから埋める）
+3. たまったデータは、Airtableのベースを直接開けばいつでも確認できる。
+   `../seller-watchlist.csv`へ転記したい場合は、Watchlistテーブルの行を選択して
+   CSV形式でエクスポートできる（`quality_rating`等は空欄のまま。これは②③④の
+   評価を経てから埋める）

@@ -1,37 +1,52 @@
 // セラーウォッチ検出：検出済み履歴のリセット（ブックマークレット版・可読ソース）
 //
-// 共有データストア（Google Apps Script）のSeenシートを全消去する。
+// 共有データストア（Airtable）のSeenテーブルを全消去する。
 // PC/Kiwi/ブックマークレットいずれで実行しても、全端末に反映される。
 
 (async function () {
-  var apiUrl = localStorage.getItem("sw_api_url");
-  var apiSecret = localStorage.getItem("sw_api_secret");
-  if (!apiUrl || !apiSecret) {
+  var AIRTABLE_API_BASE = "https://api.airtable.com/v0";
+  var baseId = localStorage.getItem("sw_airtable_base_id");
+  var token = localStorage.getItem("sw_airtable_token");
+  if (!baseId || !token) {
     alert("共有データストアが未設定です。先にcheck.jsを一度実行して設定してください。");
     return;
   }
   if (!confirm("検出済み履歴を全てリセットします（共有データストア全体に反映されます）。よろしいですか？")) {
     return;
   }
-  try {
-    var res = await fetch(apiUrl, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "resetSeen", secret: apiSecret }),
-    });
+
+  async function parseJsonResponse(res) {
     var text = await res.text();
-    var result;
     try {
-      result = JSON.parse(text);
-    } catch (parseErr) {
+      return JSON.parse(text);
+    } catch (e) {
       throw new Error("応答がJSONではありません（先頭200文字）: " + text.slice(0, 200));
     }
-    if (result && result.ok) {
-      alert("リセットしました。");
-    } else {
-      alert("応答が異常です: " + JSON.stringify(result));
+  }
+
+  try {
+    var ids = [];
+    var offset;
+    do {
+      var url = AIRTABLE_API_BASE + "/" + baseId + "/Seen" + (offset ? "?offset=" + offset : "");
+      var res = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+      var data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error("Airtable APIエラー: " + JSON.stringify(data));
+      (data.records || []).forEach(function (r) { ids.push(r.id); });
+      offset = data.offset;
+    } while (offset);
+
+    for (var i = 0; i < ids.length; i += 10) {
+      var chunk = ids.slice(i, i + 10);
+      var query = chunk.map(function (id) { return "records[]=" + encodeURIComponent(id); }).join("&");
+      var delRes = await fetch(AIRTABLE_API_BASE + "/" + baseId + "/Seen?" + query, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + token },
+      });
+      var delData = await parseJsonResponse(delRes);
+      if (!delRes.ok) throw new Error("Airtable APIエラー: " + JSON.stringify(delData));
     }
+    alert("リセットしました（" + ids.length + "件削除）。");
   } catch (e) {
     alert("リセットに失敗しました: " + e.message);
   }

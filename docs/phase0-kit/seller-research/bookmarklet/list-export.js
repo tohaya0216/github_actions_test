@@ -1,17 +1,18 @@
 // セラーウォッチ検出：候補一覧をCSVとして表示（ブックマークレット版・可読ソース）
 //
-// 共有データストア（Google Apps Script）のWatchlistシートから現在の一覧を
-// 取得し、seller-watchlist-template.csvと同じ列構成のCSVテキストとして
-// prompt()に表示する。prompt()のテキストは全選択・コピーできるので、
-// スマホでもクリップボード権限なしでコピーできる。
+// 共有データストア（Airtable）のWatchlistテーブルから現在の一覧を取得し、
+// seller-watchlist-template.csvと同じ列構成のCSVテキストとしてprompt()に
+// 表示する。prompt()のテキストは全選択・コピーできるので、スマホでも
+// クリップボード権限なしでコピーできる。
 //
-// 注：データはスプレッドシートを直接開いても確認できる。このスクリプトは
+// 注：データはAirtableのベースを直接開いても確認できる。このスクリプトは
 // 「開かずにその場でCSVとしてコピーしたい」場合の補助。
 
 (async function () {
-  var apiUrl = localStorage.getItem("sw_api_url");
-  var apiSecret = localStorage.getItem("sw_api_secret");
-  if (!apiUrl || !apiSecret) {
+  var AIRTABLE_API_BASE = "https://api.airtable.com/v0";
+  var baseId = localStorage.getItem("sw_airtable_base_id");
+  var token = localStorage.getItem("sw_airtable_token");
+  if (!baseId || !token) {
     alert("共有データストアが未設定です。先にcheck.jsを一度実行して設定してください。");
     return;
   }
@@ -27,28 +28,31 @@
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
 
-  var url =
-    apiUrl + "?action=getWatchlist&secret=" + encodeURIComponent(apiSecret);
-  var result;
-  try {
-    // credentials: "include" でscript.google.comのログインCookieを一緒に送る。
-    var res = await fetch(url, { credentials: "include" });
+  async function parseJsonResponse(res) {
     var text = await res.text();
     try {
-      result = JSON.parse(text);
-    } catch (parseErr) {
+      return JSON.parse(text);
+    } catch (e) {
       throw new Error("応答がJSONではありません（先頭200文字）: " + text.slice(0, 200));
     }
+  }
+
+  var rows = [];
+  try {
+    var offset;
+    do {
+      var url = AIRTABLE_API_BASE + "/" + baseId + "/Watchlist" + (offset ? "?offset=" + offset : "");
+      var res = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+      var data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error("Airtable APIエラー: " + JSON.stringify(data));
+      (data.records || []).forEach(function (r) { rows.push(r.fields); });
+      offset = data.offset;
+    } while (offset);
   } catch (e) {
     alert("共有データストアに接続できませんでした: " + e.message);
     return;
   }
-  if (!result || !result.ok) {
-    alert("応答が異常です: " + JSON.stringify(result));
-    return;
-  }
 
-  var rows = result.rows || [];
   if (rows.length === 0) {
     alert("追加済みの候補はまだありません。");
     return;

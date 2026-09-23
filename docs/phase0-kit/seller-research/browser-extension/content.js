@@ -4,9 +4,8 @@
 // DOM（表示中の内容）だけを読み取り、Amazonへの追加通信は一切行わない。
 // 評価数が条件レンジ内かつ未チェックのセラーを見つけたら、画面右下に
 // 確認バナーを出す。判定履歴・監視リストは、PC/Kiwi/ブックマークレットで
-// 共有するため、Google Apps Script経由でスプレッドシートに保存する
-// （設定方法は ../apps-script/README.md 参照。Amazonへの通信は増えない。
-// 通信先はscript.google.comのみ）。
+// 共有するため、Airtable経由で保存する（設定方法は ../airtable/README.md
+// 参照。Amazonへの通信は増えない。通信先はapi.airtable.comのみ）。
 //
 // 注意：Amazonのページ構造（クラス名・id）は変わることがあり、この実装は
 // ネットワークが使えない開発環境で作成したため実機での動作未確認。
@@ -17,7 +16,7 @@
   // manifest.jsonのversionと手動で合わせる。画面上のステータス表示にも出すことで、
   // Kiwi Browser等で「再読み込みが本当に反映されたか」を拡張機能管理画面を
   // 開かずにその場で確認できるようにする（2026-09-23追加）。
-  const VERSION = "0.3.1";
+  const VERSION = "0.4.0";
   const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
   const LOG_PREFIX = "[seller-watch]";
 
@@ -183,82 +182,97 @@
     return chrome.storage.local.get(DEFAULT_SETTINGS);
   }
 
-  async function getApiConfig() {
-    return chrome.storage.local.get({ apiUrl: "", apiSecret: "" });
+  async function getAirtableConfig() {
+    return chrome.storage.local.get({ airtableBaseId: "", airtableToken: "" });
   }
 
   // PC/Kiwi/ブックマークレットで判定履歴・監視リストを共有するための
-  // Google Apps Script API呼び出し（2026-09-23追加）。詳細は
-  // ../apps-script/README.md参照。通信先はscript.google.comのみで、
+  // Airtable API呼び出し（2026-09-23、Google Apps Script版から切替）。
+  // Googleアカウントのセッション状態に依存する問題が実機で解消できなかった
+  // ため、独立したAPIキー認証のAirtableに変更した。詳細は
+  // ../airtable/README.md参照。通信先はapi.airtable.comのみで、
   // Amazonへの通信は増えない。
-  async function apiGet(action) {
-    const { apiUrl, apiSecret } = await getApiConfig();
-    if (!apiUrl || !apiSecret) return null;
-    try {
-      const url = `${apiUrl}?action=${encodeURIComponent(action)}&secret=${encodeURIComponent(apiSecret)}`;
-      // credentials: "include" でscript.google.comのログインCookieを一緒に送る。
-      // 省略するとクロスオリジンではCookieが付かず、Googleがアカウントを
-      // 特定できずログイン/アカウント選択のHTMLページを返してくることがある
-      // （2026-09-23、実機の接続テストで発覚）。
-      const res = await fetch(url, { credentials: "include" });
-      const text = await res.text();
-      try {
-        return JSON.parse(text);
-      } catch (parseErr) {
-        log("API応答がJSONではありません（HTML等が返っている可能性）:", text.slice(0, 200));
-        return null;
-      }
-    } catch (e) {
-      log("API GET失敗:", e);
-      return null;
-    }
-  }
+  const AIRTABLE_API_BASE = "https://api.airtable.com/v0";
 
-  async function apiPost(action, payload) {
-    const { apiUrl, apiSecret } = await getApiConfig();
-    if (!apiUrl || !apiSecret) return null;
+  async function airtableRequest(method, table, { query, body } = {}) {
+    const { airtableBaseId, airtableToken } = await getAirtableConfig();
+    if (!airtableBaseId || !airtableToken) return null;
     try {
-      const res = await fetch(apiUrl, {
-        method: "POST",
-        credentials: "include",
-        // text/plainにすることでCORSプリフライト（OPTIONS）を回避する。
-        // Apps Script側はContent-Typeに関係なく本文をJSONとしてパースする。
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action, secret: apiSecret, ...payload }),
+      let url = `${AIRTABLE_API_BASE}/${airtableBaseId}/${encodeURIComponent(table)}`;
+      if (query) url += `?${query}`;
+      const res = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${airtableToken}`,
+          "Content-Type": "application/json",
+        },
+        body: body ? JSON.stringify(body) : undefined,
       });
       const text = await res.text();
+      let json;
       try {
-        return JSON.parse(text);
+        json = JSON.parse(text);
       } catch (parseErr) {
-        log("API応答がJSONではありません（HTML等が返っている可能性）:", text.slice(0, 200));
+        log("Airtable応答がJSONではありません:", text.slice(0, 200));
         return null;
       }
+      if (!res.ok) {
+        log("Airtable APIエラー:", json);
+        return null;
+      }
+      return json;
     } catch (e) {
-      log("API POST失敗:", e);
+      log("Airtable通信失敗:", e);
       return null;
     }
   }
 
   // 戻り値: 検出済みセラーのマップ、または共有データストア未設定/到達不可の場合null
   async function getSeenSellers() {
-    const result = await apiGet("getSeen");
-    if (!result || !result.ok) return null;
-    return result.seen || {};
+    const map = {};
+    let offset;
+    do {
+      const data = await airtableRequest("GET", "Seen", {
+        query: offset ? `offset=${offset}` : undefined,
+      });
+      if (!data) return null;
+      (data.records || []).forEach((r) => {
+        if (r.fields && r.fields.seller_id) {
+          map[r.fields.seller_id] = {
+            status: r.fields.status,
+            checkedAt: r.fields.checked_at,
+          };
+        }
+      });
+      offset = data.offset;
+    } while (offset);
+    return map;
   }
 
   async function markSeenBatch(items) {
     if (!items.length) return;
-    await apiPost("markSeen", {
-      items: items.map((i) => ({
-        seller_id: i.sellerId,
-        status: i.status,
-        checked_at: new Date().toISOString(),
-      })),
-    });
+    // Airtableのupsertは1リクエストにつき最大10件まで。
+    for (let i = 0; i < items.length; i += 10) {
+      const chunk = items.slice(i, i + 10);
+      await airtableRequest("PATCH", "Seen", {
+        body: {
+          performUpsert: { fieldsToMergeOn: ["seller_id"] },
+          records: chunk.map((it) => ({
+            fields: {
+              seller_id: it.sellerId,
+              status: it.status,
+              checked_at: new Date().toISOString(),
+            },
+          })),
+        },
+      });
+    }
   }
 
   async function addToWatchlist(row) {
-    await apiPost("addWatchlist", { row });
+    await airtableRequest("POST", "Watchlist", {
+      body: { records: [{ fields: row }] },
+    });
   }
 
   function buildWatchlistRow(candidate) {
