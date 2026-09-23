@@ -81,6 +81,27 @@
     return new Date().toISOString().slice(0, 10);
   }
 
+  // 動作確認用の常時ステータス表示（2026-09-23追加）。
+  // マッチの有無に関わらず、スクリプトが実行されたこと自体を画面上で
+  // 分かるようにする（「動いているか分からない」問題への対応）。
+  let statusHideTimer = null;
+  function showStatus(text, kind) {
+    let el = document.getElementById("sw-status-indicator");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "sw-status-indicator";
+      document.body.appendChild(el);
+    }
+    el.textContent = "SW: " + text;
+    el.className = "sw-status-" + (kind || "info");
+    el.style.display = "block";
+
+    clearTimeout(statusHideTimer);
+    statusHideTimer = setTimeout(() => {
+      el.style.display = "none";
+    }, 6000);
+  }
+
   // 商品ページの「他の出品」パネル（複数セラーがまとめて表示される）を走査
   function scanOfferListPanel() {
     const offers = document.querySelectorAll(
@@ -225,35 +246,61 @@
   }
 
   async function main() {
+    showStatus("スキャン中…", "scanning");
+
     if (document.getElementById("sw-detector-banner")) return; // 表示中は再スキャンしない
 
     const candidates = [
       ...scanOfferListPanel(),
       ...scanSellerStorefrontPage(),
     ];
-    if (candidates.length === 0) return;
+    if (candidates.length === 0) {
+      showStatus("このページではセラー情報が見つかりませんでした", "empty");
+      return;
+    }
 
     const settings = await getSettings();
     const seenSellers = await getSeenSellers();
 
+    let matchedAny = false;
+    let newCount = 0;
+    let outOfRangeCount = 0;
+    let unknownCount = 0;
+    let alreadySeenCount = 0;
+
     for (const c of candidates) {
-      if (seenSellers[c.sellerId]) continue;
+      if (seenSellers[c.sellerId]) {
+        alreadySeenCount++;
+        continue;
+      }
+      newCount++;
 
       if (c.ratingCount == null) {
         log("評価数を読み取れずスキップ:", c);
         await markSeen(c.sellerId, "unknown_rating");
+        unknownCount++;
         continue;
       }
 
       if (c.ratingCount < settings.minRating || c.ratingCount > settings.maxRating) {
         log("レンジ外のためスキップ:", c);
         await markSeen(c.sellerId, "out_of_range");
+        outOfRangeCount++;
         continue;
       }
 
       log("条件に合致する新規セラーを検出:", c);
       showConfirmBanner(c);
+      matchedAny = true;
       break; // 1回のスキャンで1件だけ表示する
+    }
+
+    if (!matchedAny) {
+      showStatus(
+        `${candidates.length}件検出（新規${newCount}・既知${alreadySeenCount}・` +
+          `範囲外${outOfRangeCount}・評価数不明${unknownCount}）／条件合致なし`,
+        "no-match"
+      );
     }
   }
 
