@@ -11,6 +11,10 @@
 // 実際のレーティング表示テキストを教えてもらえれば抽出パターンを調整する。
 
 (() => {
+  // manifest.jsonのversionと手動で合わせる。画面上のステータス表示にも出すことで、
+  // Kiwi Browser等で「再読み込みが本当に反映されたか」を拡張機能管理画面を
+  // 開かずにその場で確認できるようにする（2026-09-23追加）。
+  const VERSION = "0.2.0";
   const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
   const LOG_PREFIX = "[seller-watch]";
 
@@ -108,7 +112,7 @@
         el.id = "sw-status-indicator";
         document.body.appendChild(el);
       }
-      el.textContent = "SW: " + text;
+      el.textContent = `SW v${VERSION}: ${text}`;
       el.className = "sw-status-" + (kind || "info");
       el.style.display = "block";
 
