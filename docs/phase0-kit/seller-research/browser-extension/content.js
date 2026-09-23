@@ -81,25 +81,44 @@
     return new Date().toISOString().slice(0, 10);
   }
 
+  // ページの変化を監視するMutationObserver（下の方で初期化）。
+  // ステータス表示・確認バナー自体もDOMを書き換えるため、何も対策しないと
+  // 「自分の表示変更を検知して再スキャン→また表示変更→また検知…」という
+  // 自己ループが発生する（2026-09-23、実機で「表示がちらつく」「本来新規のはずが
+  // 既知と表示される」として発覚）。自分自身のDOM操作の間だけ監視を止めることで防ぐ。
+  let observer;
+  function withoutTriggeringRescan(fn) {
+    if (observer) observer.disconnect();
+    try {
+      fn();
+    } finally {
+      if (observer) observer.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
   // 動作確認用の常時ステータス表示（2026-09-23追加）。
   // マッチの有無に関わらず、スクリプトが実行されたこと自体を画面上で
   // 分かるようにする（「動いているか分からない」問題への対応）。
   let statusHideTimer = null;
   function showStatus(text, kind) {
-    let el = document.getElementById("sw-status-indicator");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "sw-status-indicator";
-      document.body.appendChild(el);
-    }
-    el.textContent = "SW: " + text;
-    el.className = "sw-status-" + (kind || "info");
-    el.style.display = "block";
+    withoutTriggeringRescan(() => {
+      let el = document.getElementById("sw-status-indicator");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "sw-status-indicator";
+        document.body.appendChild(el);
+      }
+      el.textContent = "SW: " + text;
+      el.className = "sw-status-" + (kind || "info");
+      el.style.display = "block";
 
-    clearTimeout(statusHideTimer);
-    statusHideTimer = setTimeout(() => {
-      el.style.display = "none";
-    }, 6000);
+      clearTimeout(statusHideTimer);
+      statusHideTimer = setTimeout(() => {
+        withoutTriggeringRescan(() => {
+          el.style.display = "none";
+        });
+      }, 6000);
+    });
   }
 
   // 商品ページの「他の出品」パネル（複数セラーがまとめて表示される）を走査
@@ -199,9 +218,6 @@
   }
 
   function showConfirmBanner(candidate) {
-    const existing = document.getElementById("sw-detector-banner");
-    if (existing) existing.remove();
-
     const warningHtml = candidate.vendorKeyword
       ? `<p class="sw-detector-warning">⚠️ 店名に「${escapeHtml(
           candidate.vendorKeyword
@@ -210,39 +226,44 @@
         利益が出ない可能性が高い）</p>`
       : "";
 
-    const banner = document.createElement("div");
-    banner.id = "sw-detector-banner";
-    banner.innerHTML = `
-      <div class="sw-detector-box">
-        <p class="sw-detector-title">条件に合致するストアが見つかりました</p>
-        <p class="sw-detector-body">${escapeHtml(
-          candidate.sellerName || "(店名不明)"
-        )}（評価 ${candidate.ratingCount}件）</p>
-        ${warningHtml}
-        <p class="sw-detector-body">監視リストに追加しますか？</p>
-        <div class="sw-detector-actions">
-          <button id="sw-detector-add">追加する</button>
-          <button id="sw-detector-skip">今回は追加しない</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(banner);
+    withoutTriggeringRescan(() => {
+      const existing = document.getElementById("sw-detector-banner");
+      if (existing) existing.remove();
 
-    document
-      .getElementById("sw-detector-add")
-      .addEventListener("click", async () => {
-        await addToWatchlist(buildWatchlistRow(candidate));
-        await markSeen(candidate.sellerId, "added");
-        banner.remove();
-        log("追加しました:", candidate);
-      });
-    document
-      .getElementById("sw-detector-skip")
-      .addEventListener("click", async () => {
-        await markSeen(candidate.sellerId, "skipped");
-        banner.remove();
-        log("スキップしました:", candidate);
-      });
+      const banner = document.createElement("div");
+      banner.id = "sw-detector-banner";
+      banner.innerHTML = `
+        <div class="sw-detector-box">
+          <p class="sw-detector-title">条件に合致するストアが見つかりました</p>
+          <p class="sw-detector-body">${escapeHtml(
+            candidate.sellerName || "(店名不明)"
+          )}（評価 ${candidate.ratingCount}件）</p>
+          ${warningHtml}
+          <p class="sw-detector-body">監視リストに追加しますか？</p>
+          <div class="sw-detector-actions">
+            <button id="sw-detector-add">追加する</button>
+            <button id="sw-detector-skip">今回は追加しない</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(banner);
+
+      document
+        .getElementById("sw-detector-add")
+        .addEventListener("click", async () => {
+          await addToWatchlist(buildWatchlistRow(candidate));
+          await markSeen(candidate.sellerId, "added");
+          withoutTriggeringRescan(() => banner.remove());
+          log("追加しました:", candidate);
+        });
+      document
+        .getElementById("sw-detector-skip")
+        .addEventListener("click", async () => {
+          await markSeen(candidate.sellerId, "skipped");
+          withoutTriggeringRescan(() => banner.remove());
+          log("スキップしました:", candidate);
+        });
+    });
   }
 
   async function main() {
@@ -312,7 +333,7 @@
     }, 500);
   }
 
-  const observer = new MutationObserver(() => scheduleScan());
+  observer = new MutationObserver(() => scheduleScan());
   observer.observe(document.body, { childList: true, subtree: true });
 
   scheduleScan();
