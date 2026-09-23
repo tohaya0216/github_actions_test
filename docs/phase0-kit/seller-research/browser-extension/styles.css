@@ -28,6 +28,17 @@
   color: #333;
 }
 
+.sw-detector-warning {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #7a4a00;
+  background: #fff3cd;
+  border: 1px solid #ffe08a;
+  border-radius: 4px;
+}
+
 .sw-detector-actions button {
   margin-right: 8px;
   padding: 4px 10px;

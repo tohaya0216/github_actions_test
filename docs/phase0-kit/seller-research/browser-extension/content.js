@@ -14,8 +14,31 @@
   const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
   const LOG_PREFIX = "[seller-watch]";
 
+  // メーカー・輸入代理店の直接出品を示唆する店名キーワード（2026-09-23追加）。
+  // バッチ3で「エフェクター専門店ナインボルト」が楽天・Amazon両方に自ら出品し、
+  // 価格を同期させていた実例が見つかったことを踏まえた早期警告。
+  // 追加の通信は発生させず、既に読み取り済みの店名テキストを見るだけ。
+  const VENDOR_KEYWORDS = [
+    "専門店",
+    "代理店",
+    "正規販売店",
+    "正規取扱店",
+    "オフィシャルショップ",
+    "オフィシャルストア",
+    "メーカー直営",
+    "メーカー公式",
+    "公式ショップ",
+    "公式ストア",
+    "特約店",
+  ];
+
   function log(...args) {
     console.log(LOG_PREFIX, ...args);
+  }
+
+  function matchedVendorKeyword(sellerName) {
+    if (!sellerName) return null;
+    return VENDOR_KEYWORDS.find((kw) => sellerName.includes(kw)) || null;
   }
 
   function getSellerIdFromHref(href) {
@@ -71,11 +94,13 @@
       if (!sellerLink) return;
       const sellerId = getSellerIdFromHref(sellerLink.href);
       if (!sellerId) return;
+      const sellerName = sellerLink.textContent.trim();
       candidates.push({
         sellerId,
-        sellerName: sellerLink.textContent.trim(),
+        sellerName,
         ratingCount: extractRatingCount(offer.textContent),
         sourceUrl: sellerLink.href,
+        vendorKeyword: matchedVendorKeyword(sellerName),
       });
     });
     return candidates;
@@ -102,6 +127,7 @@
         sellerName,
         ratingCount: extractRatingCount(document.body.innerText),
         sourceUrl: location.href,
+        vendorKeyword: matchedVendorKeyword(sellerName),
       },
     ];
   }
@@ -133,6 +159,9 @@
 
   function buildWatchlistRow(candidate) {
     const today = todayStr();
+    const vendorWarning = candidate.vendorKeyword
+      ? ` ／ 要注意:店名に「${candidate.vendorKeyword}」を含む（メーカー・代理店の直接出品の可能性。楽天側に同一店舗がないか要確認）`
+      : "";
     return {
       seller_id: candidate.sellerId,
       seller_name: candidate.sellerName || "",
@@ -144,13 +173,21 @@
       last_evaluated_date: "",
       last_checked_date: today,
       status: "new",
-      notes: `拡張機能が自動検出（検出元: ${candidate.sourceUrl}）`,
+      notes: `拡張機能が自動検出（検出元: ${candidate.sourceUrl}）${vendorWarning}`,
     };
   }
 
   function showConfirmBanner(candidate) {
     const existing = document.getElementById("sw-detector-banner");
     if (existing) existing.remove();
+
+    const warningHtml = candidate.vendorKeyword
+      ? `<p class="sw-detector-warning">⚠️ 店名に「${escapeHtml(
+          candidate.vendorKeyword
+        )}」を含みます。メーカー・輸入代理店が自ら出品している可能性があります
+        （楽天側に同一店舗がないか要確認。同一なら価格が仕入れ値と同期しており
+        利益が出ない可能性が高い）</p>`
+      : "";
 
     const banner = document.createElement("div");
     banner.id = "sw-detector-banner";
@@ -160,6 +197,7 @@
         <p class="sw-detector-body">${escapeHtml(
           candidate.sellerName || "(店名不明)"
         )}（評価 ${candidate.ratingCount}件）</p>
+        ${warningHtml}
         <p class="sw-detector-body">監視リストに追加しますか？</p>
         <div class="sw-detector-actions">
           <button id="sw-detector-add">追加する</button>
