@@ -16,7 +16,7 @@
   // manifest.jsonのversionと手動で合わせる。画面上のステータス表示にも出すことで、
   // Kiwi Browser等で「再読み込みが本当に反映されたか」を拡張機能管理画面を
   // 開かずにその場で確認できるようにする（2026-09-23追加）。
-  const VERSION = "0.5.0";
+  const VERSION = "0.5.1";
   const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
   const LOG_PREFIX = "[seller-watch]";
 
@@ -279,8 +279,7 @@
     }
   }
 
-  // 戻り値: 検出済みセラーのマップ、または共有データストア未設定/到達不可の場合null
-  async function getSeenSellers() {
+  async function fetchSeenSellers() {
     const map = {};
     let offset;
     do {
@@ -301,8 +300,29 @@
     return map;
   }
 
+  // Amazonの「他の出品を見る」パネルはスクロールに応じて出品が少しずつ非同期で
+  // 追加され、そのたびにMutationObserverが再スキャンを起動する。毎回Seenテーブル
+  // 全件を取得し直すと、読み込みが続く間ずっとステータス表示がちらつき続けて
+  // しまう（2026-09-24、実機で「表示が不安になるほど切り替わる」として発覚）。
+  // 短時間（15秒）はキャッシュを使い回すことで、同じページの読み込み中に
+  // 何度も再スキャンが走っても通信・表示のちらつきを抑える。
+  let seenSellersCache = null; // { map, fetchedAt }
+  const SEEN_CACHE_TTL_MS = 15000;
+
+  async function getSeenSellers() {
+    const now = Date.now();
+    if (seenSellersCache && now - seenSellersCache.fetchedAt < SEEN_CACHE_TTL_MS) {
+      return seenSellersCache.map;
+    }
+    const map = await fetchSeenSellers();
+    if (map === null) return null;
+    seenSellersCache = { map, fetchedAt: now };
+    return map;
+  }
+
   async function markSeenBatch(items) {
     if (!items.length) return;
+    const checkedAt = new Date().toISOString();
     // Airtableのupsertは1リクエストにつき最大10件まで。
     for (let i = 0; i < items.length; i += 10) {
       const chunk = items.slice(i, i + 10);
@@ -313,11 +333,20 @@
             fields: {
               seller_id: it.sellerId,
               status: it.status,
-              checked_at: new Date().toISOString(),
+              checked_at: checkedAt,
             },
           })),
         },
       });
+    }
+    // キャッシュ済みのSeenマップにも即座に反映する。反映しないと、
+    // キャッシュのTTL（15秒）以内に同じセラーを再スキャンした際、
+    // Airtableにはもう書き込み済みなのにキャッシュ上は「未検出」のままで、
+    // バナーが不要に再表示されてしまう。
+    if (seenSellersCache) {
+      for (const it of items) {
+        seenSellersCache.map[it.sellerId] = { status: it.status, checkedAt };
+      }
     }
   }
 
@@ -490,12 +519,16 @@
     }
   }
 
+  // Amazonの「他の出品を見る」パネルはスクロール中、短時間に何度もDOMを
+  // 書き換える（出品が少しずつ追加される）。デバウンスが短いと、その間ずっと
+  // 「スキャン中…」の表示が点滅し続けてしまうため、少し長めに待つ
+  // （2026-09-24、実機で表示のちらつきが気になるとの指摘を受けて調整）。
   let scanTimer = null;
   function scheduleScan() {
     clearTimeout(scanTimer);
     scanTimer = setTimeout(() => {
       main().catch((e) => console.error(LOG_PREFIX, e));
-    }, 500);
+    }, 1200);
   }
 
   observer = new MutationObserver(() => scheduleScan());
