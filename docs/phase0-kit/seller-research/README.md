@@ -102,6 +102,13 @@ Astra依頼という重い作業に入る前の、コストの低い足切りと
 等のキーワードが含まれる場合に確認バナーで注意表示するようにしている
 （`content.js`の`VENDOR_KEYWORDS`）。追加確認の目安として使うとよい。
 
+この足切りは**Astraにまとめて任せられる**（2026-09-24追加）。Watchlistの
+`seller_id`・`seller_name`を`astra-prompt-seller-screening.md`に貼り付けて渡すと、
+楽天に同一運営の店があるか・会社概要から見た業態を調べ、セラーごとに
+`skip`/`caution`/`go`の判定をCSVで返してくれる。楽天・Web検索だけで完結するので
+Astraがブロックされる心配はない。`go`（と、必要なら`caution`）のセラーだけを
+Keepaでの商品確認に回す。
+
 #### セラー単位の早期打ち切り
 
 1セラーの出品商品を順番に②③まで確認していく中で、**最初の2〜3商品が
@@ -146,6 +153,7 @@ Astra依頼という重い作業に入る前の、コストの低い足切りと
 |---|---|
 | `seller-watchlist-template.csv` | ①セラーの定点観測リスト |
 | `seller-products-template.csv` | ②Amazon側で確認した商品リスト（型番・価格・出品者数等） |
+| `astra-prompt-seller-screening.md` | ②の前の足切り（メーカー・代理店直販の見極め）をAstraに依頼するプロンプト |
 | `astra-prompt-rakuten-check.md` | ③楽天側確認をAstraに依頼するプロンプト |
 | `merge_seller_research.py` | ④②③の結果を自動突合し、`analyze.py`用CSVに整形するスクリプト |
 | `check_watchlist_freshness.py` | セラーリストの鮮度チェック（品質の再評価・新着出品確認が必要なセラーの一覧表示） |
