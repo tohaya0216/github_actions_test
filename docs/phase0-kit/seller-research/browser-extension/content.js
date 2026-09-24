@@ -16,9 +16,53 @@
   // manifest.jsonのversionと手動で合わせる。画面上のステータス表示にも出すことで、
   // Kiwi Browser等で「再読み込みが本当に反映されたか」を拡張機能管理画面を
   // 開かずにその場で確認できるようにする（2026-09-23追加）。
-  const VERSION = "0.4.0";
+  const VERSION = "0.5.0";
   const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
   const LOG_PREFIX = "[seller-watch]";
+
+  // 店名として明らかに誤りと分かる文言（2026-09-24追加）。
+  // 実機で「出品者名の代わりに『詳細を見る』が保存される」不具合が見つかった。
+  // 原因は querySelector にカンマ区切りで複数セレクタを渡すと「優先順位」ではなく
+  // 「DOM上で先に現れた方」がマッチしてしまうこと（同じ出品枠内に seller= を含む
+  // 別リンクが店名リンクより先にあった場合、そちらが誤って採用されていた）。
+  // セレクタ側は querySelectorInPriorityOrder で優先順位通りに直したが、それでも
+  // 想定外のDOM構造で誤取得した場合に、明らかにおかしい文言だけは弾く保険。
+  const GENERIC_NAME_BLOCKLIST = [
+    "詳細を見る",
+    "もっと見る",
+    "レビューを見る",
+    "評価を見る",
+    "出品者情報",
+    "ストアの詳細",
+  ];
+
+  function sanitizeSellerName(name) {
+    if (!name) return null;
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    if (GENERIC_NAME_BLOCKLIST.includes(trimmed)) return null;
+    return trimmed;
+  }
+
+  // querySelectorは複数セレクタをカンマ区切りで渡すと「DOM上の出現順」でマッチする。
+  // 優先順位（先に書いたセレクタを優先）で試したい場合はこちらを使う。
+  function querySelectorInPriorityOrder(root, selectors) {
+    for (const sel of selectors) {
+      const el = root.querySelector(sel);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  function extractSellerNameFromTitle(title) {
+    if (!title) return null;
+    const parts = title
+      .split(/[|:\-–—]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const candidate = parts.find((p) => !/amazon/i.test(p));
+    return sanitizeSellerName(candidate || null);
+  }
 
   // メーカー・輸入代理店の直接出品を示唆する店名キーワード（2026-09-23追加）。
   // バッチ3で「エフェクター専門店ナインボルト」が楽天・Amazon両方に自ら出品し、
@@ -134,13 +178,14 @@
     );
     const candidates = [];
     offers.forEach((offer) => {
-      const sellerLink = offer.querySelector(
-        "#aod-offer-soldBy a, a[href*='seller=']"
-      );
+      const sellerLink = querySelectorInPriorityOrder(offer, [
+        "#aod-offer-soldBy a",
+        "a[href*='seller=']",
+      ]);
       if (!sellerLink) return;
       const sellerId = getSellerIdFromHref(sellerLink.href);
       if (!sellerId) return;
-      const sellerName = sellerLink.textContent.trim();
+      const sellerName = sanitizeSellerName(sellerLink.textContent);
       candidates.push({
         sellerId,
         sellerName,
@@ -158,14 +203,21 @@
     const sellerId = params.get("seller");
     if (!sellerId) return [];
 
-    let sellerName = null;
-    const nameEl = document.querySelector(
-      "#seller-name, h1#title, .a-spacing-small h1, h1"
-    );
-    if (nameEl) sellerName = nameEl.textContent.trim();
-    if (!sellerName && document.title) {
-      sellerName = document.title.split("|")[0].trim();
+    // titleタグ（例:「◯◯ストア | Amazon.co.jp」）はh1より当たり外れが少ないため先に試す。
+    // それでも取れない場合のみ、より当たりやすい順にセレクタを試す
+    // （querySelectorはカンマ区切りだと優先順位ではなくDOM出現順でマッチするため、
+    // querySelectorInPriorityOrderで1つずつ順番に試す）。
+    let sellerName = extractSellerNameFromTitle(document.title);
+    if (!sellerName) {
+      const nameEl = querySelectorInPriorityOrder(document, [
+        "#seller-name",
+        "h1#title",
+        ".a-spacing-small h1",
+        "h1",
+      ]);
+      if (nameEl) sellerName = sanitizeSellerName(nameEl.textContent);
     }
+    log("出品者ストアページの店名抽出結果:", sellerName, "(title:", document.title, ")");
 
     return [
       {
@@ -295,7 +347,10 @@
     };
   }
 
-  function showConfirmBanner(candidate) {
+  // 第2引数のonDoneは、このセラーの処理（追加/スキップ）が終わった後に呼ばれる。
+  // main()側でこれを使い、条件に合う候補が複数あれば1件ずつ順番にバナーを出す
+  // （2026-09-24：以前は1回のスキャンで最初の1件しか表示せず、残りは無視していた）。
+  function showConfirmBanner(candidate, progressText, onDone) {
     const warningHtml = candidate.vendorKeyword
       ? `<p class="sw-detector-warning">⚠️ 店名に「${escapeHtml(
           candidate.vendorKeyword
@@ -312,7 +367,7 @@
       banner.id = "sw-detector-banner";
       banner.innerHTML = `
         <div class="sw-detector-box">
-          <p class="sw-detector-title">条件に合致するストアが見つかりました</p>
+          <p class="sw-detector-title">条件に合致するストアが見つかりました${progressText}</p>
           <p class="sw-detector-body">${escapeHtml(
             candidate.sellerName || "(店名不明)"
           )}（評価 ${candidate.ratingCount}件）</p>
@@ -326,6 +381,8 @@
       `;
       document.body.appendChild(banner);
 
+      const displayName = candidate.sellerName || "(店名不明)";
+
       document
         .getElementById("sw-detector-add")
         .addEventListener("click", async () => {
@@ -333,6 +390,8 @@
           await markSeenBatch([{ sellerId: candidate.sellerId, status: "added" }]);
           withoutTriggeringRescan(() => banner.remove());
           log("追加しました:", candidate);
+          showStatus(`「${displayName}」を監視リストに追加しました`, "success");
+          onDone();
         });
       document
         .getElementById("sw-detector-skip")
@@ -340,8 +399,19 @@
           await markSeenBatch([{ sellerId: candidate.sellerId, status: "skipped" }]);
           withoutTriggeringRescan(() => banner.remove());
           log("スキップしました:", candidate);
+          showStatus(`「${displayName}」をスキップしました`, "info");
+          onDone();
         });
     });
+  }
+
+  async function showConfirmBannersSequentially(queue) {
+    for (let i = 0; i < queue.length; i++) {
+      const progressText = queue.length > 1 ? `（${i + 1}/${queue.length}）` : "";
+      await new Promise((resolve) => {
+        showConfirmBanner(queue[i], progressText, resolve);
+      });
+    }
   }
 
   async function main() {
@@ -369,18 +439,22 @@
       return;
     }
 
-    let matchedAny = false;
     let newCount = 0;
     let outOfRangeCount = 0;
     let unknownCount = 0;
     let alreadySeenCount = 0;
     const toMarkSeen = [];
+    const matched = [];
+    // 同じセラーが1回のスキャンで複数回検出されることがある（出品パネル内の重複表示等）。
+    // 同一seller_idを2回キューに入れてバナーを2回出さないようにする。
+    const seenInThisScan = new Set();
 
     for (const c of candidates) {
-      if (seenSellers[c.sellerId]) {
+      if (seenSellers[c.sellerId] || seenInThisScan.has(c.sellerId)) {
         alreadySeenCount++;
         continue;
       }
+      seenInThisScan.add(c.sellerId);
       newCount++;
 
       if (c.ratingCount == null) {
@@ -398,16 +472,16 @@
       }
 
       log("条件に合致する新規セラーを検出:", c);
-      showConfirmBanner(c);
-      matchedAny = true;
-      break; // 1回のスキャンで1件だけ表示する
+      matched.push(c);
     }
 
     if (toMarkSeen.length) {
       await markSeenBatch(toMarkSeen);
     }
 
-    if (!matchedAny) {
+    if (matched.length) {
+      await showConfirmBannersSequentially(matched);
+    } else {
       showStatus(
         `${candidates.length}件検出（新規${newCount}・既知${alreadySeenCount}・` +
           `範囲外${outOfRangeCount}・評価数不明${unknownCount}）／条件合致なし`,

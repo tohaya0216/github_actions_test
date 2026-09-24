@@ -17,7 +17,7 @@
 // 注意：browser-extension/content.js と同様、実機でのAmazon動作は未確認。
 
 (async function () {
-  var VERSION = "0.4.0";
+  var VERSION = "0.5.0";
   var VENDOR_KEYWORDS = [
     "専門店", "代理店", "正規販売店", "正規取扱店",
     "オフィシャルショップ", "オフィシャルストア",
@@ -26,6 +26,40 @@
   var MIN_RATING = 50;
   var MAX_RATING = 400;
   var AIRTABLE_API_BASE = "https://api.airtable.com/v0";
+
+  // 店名として明らかに誤りと分かる文言（2026-09-24追加）。
+  // querySelectorにカンマ区切りで複数セレクタを渡すと「優先順位」ではなく
+  // 「DOM上で先に現れた方」がマッチしてしまうため、同じ出品枠内に seller= を
+  // 含む別リンク（「詳細を見る」等）が店名リンクより先にあると誤取得していた。
+  var GENERIC_NAME_BLOCKLIST = [
+    "詳細を見る", "もっと見る", "レビューを見る", "評価を見る", "出品者情報", "ストアの詳細",
+  ];
+
+  function sanitizeSellerName(name) {
+    if (!name) return null;
+    var trimmed = name.trim();
+    if (!trimmed) return null;
+    if (GENERIC_NAME_BLOCKLIST.indexOf(trimmed) > -1) return null;
+    return trimmed;
+  }
+
+  function querySelectorInPriorityOrder(root, selectors) {
+    for (var i = 0; i < selectors.length; i++) {
+      var el = root.querySelector(selectors[i]);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  function extractSellerNameFromTitle(title) {
+    if (!title) return null;
+    var parts = title.split(/[|:\-–—]/).map(function (s) { return s.trim(); }).filter(Boolean);
+    var candidate = null;
+    for (var i = 0; i < parts.length; i++) {
+      if (!/amazon/i.test(parts[i])) { candidate = parts[i]; break; }
+    }
+    return sanitizeSellerName(candidate);
+  }
 
   function getSellerId(href) {
     try {
@@ -68,11 +102,14 @@
       "#aod-offer-list #aod-offer, div[id^='aod-offer']"
     );
     offers.forEach(function (offer) {
-      var link = offer.querySelector("#aod-offer-soldBy a, a[href*='seller=']");
+      var link = querySelectorInPriorityOrder(offer, [
+        "#aod-offer-soldBy a",
+        "a[href*='seller=']",
+      ]);
       if (!link) return;
       var id = getSellerId(link.href);
       if (!id) return;
-      var name = link.textContent.trim();
+      var name = sanitizeSellerName(link.textContent);
       out.push({
         id: id,
         name: name,
@@ -84,12 +121,14 @@
 
     var sellerId = new URLSearchParams(location.search).get("seller");
     if (sellerId) {
-      var nameEl = document.querySelector(
-        "#seller-name, h1#title, .a-spacing-small h1, h1"
-      );
-      var name = nameEl
-        ? nameEl.textContent.trim()
-        : (document.title.split("|")[0] || "").trim();
+      // titleタグはh1より当たり外れが少ないため先に試す
+      var name = extractSellerNameFromTitle(document.title);
+      if (!name) {
+        var nameEl = querySelectorInPriorityOrder(document, [
+          "#seller-name", "h1#title", ".a-spacing-small h1", "h1",
+        ]);
+        name = nameEl ? sanitizeSellerName(nameEl.textContent) : null;
+      }
       out.push({
         id: sellerId,
         name: name,
@@ -199,11 +238,15 @@
     return;
   }
 
-  var target = null;
+  // 同じセラーが1回のスキャンで複数回検出されることがある（出品パネル内の重複表示等）ため、
+  // 同一seller_idを2回キューに入れないようにする。
+  var seenInThisRun = {};
+  var targets = [];
   var toMarkSeen = [];
   for (var i = 0; i < candidates.length; i++) {
     var c = candidates[i];
-    if (seen[c.id]) continue;
+    if (seen[c.id] || seenInThisRun[c.id]) continue;
+    seenInThisRun[c.id] = true;
     if (c.rating == null) {
       toMarkSeen.push({ seller_id: c.id, status: "unknown_rating" });
       continue;
@@ -212,47 +255,59 @@
       toMarkSeen.push({ seller_id: c.id, status: "out_of_range" });
       continue;
     }
-    target = c;
-    break;
+    targets.push(c);
   }
   if (toMarkSeen.length) {
     await markSeenBatch(config, toMarkSeen);
   }
 
-  if (!target) {
+  if (targets.length === 0) {
     alert("SW v" + VERSION + ": 条件に合う新規セラーは見つかりませんでした。");
     return;
   }
 
-  var msg = "店名: " + (target.name || "(不明)") + "\n評価数: " + target.rating + "件";
-  if (target.vendor) {
-    msg +=
-      "\n\n⚠️ 店名に「" + target.vendor + "」を含みます。" +
-      "メーカー・代理店の直接出品の可能性があります（楽天側に同一店舗がないか要確認）";
-  }
-  msg += "\n\n監視リストに追加しますか？";
+  // 2026-09-24：以前は最初の1件しか確認せず、残りは無視していた。
+  // 条件に合う候補全員について、1件ずつ順番に確認する。
+  var addedCount = 0;
+  var skippedCount = 0;
+  for (var j = 0; j < targets.length; j++) {
+    var target = targets[j];
+    var progress = targets.length > 1 ? "（" + (j + 1) + "/" + targets.length + "）" : "";
+    var msg =
+      "SW v" + VERSION + progress + "\n" +
+      "店名: " + (target.name || "(不明)") + "\n評価数: " + target.rating + "件";
+    if (target.vendor) {
+      msg +=
+        "\n\n⚠️ 店名に「" + target.vendor + "」を含みます。" +
+        "メーカー・代理店の直接出品の可能性があります（楽天側に同一店舗がないか要確認）";
+    }
+    msg += "\n\n監視リストに追加しますか？";
 
-  if (confirm(msg)) {
-    var today = new Date().toISOString().slice(0, 10);
-    var row = {
-      seller_id: target.id,
-      seller_name: target.name || "",
-      seller_url: "https://www.amazon.co.jp/sp?seller=" + target.id,
-      review_count: target.rating,
-      category_tendency: "",
-      quality_rating: "",
-      first_checked_date: today,
-      last_evaluated_date: "",
-      last_checked_date: today,
-      status: "new",
-      notes:
-        "ブックマークレットで検出（" + target.url + "）" +
-        (target.vendor ? " ／ 要注意:店名に「" + target.vendor + "」を含む" : ""),
-    };
-    await addWatchlistRow(config, row);
-    await markSeenBatch(config, [{ seller_id: target.id, status: "added" }]);
-    alert("追加しました。");
-  } else {
-    await markSeenBatch(config, [{ seller_id: target.id, status: "skipped" }]);
+    if (confirm(msg)) {
+      var today = new Date().toISOString().slice(0, 10);
+      var row = {
+        seller_id: target.id,
+        seller_name: target.name || "",
+        seller_url: "https://www.amazon.co.jp/sp?seller=" + target.id,
+        review_count: target.rating,
+        category_tendency: "",
+        quality_rating: "",
+        first_checked_date: today,
+        last_evaluated_date: "",
+        last_checked_date: today,
+        status: "new",
+        notes:
+          "ブックマークレットで検出（" + target.url + "）" +
+          (target.vendor ? " ／ 要注意:店名に「" + target.vendor + "」を含む" : ""),
+      };
+      await addWatchlistRow(config, row);
+      await markSeenBatch(config, [{ seller_id: target.id, status: "added" }]);
+      addedCount++;
+    } else {
+      await markSeenBatch(config, [{ seller_id: target.id, status: "skipped" }]);
+      skippedCount++;
+    }
   }
+
+  alert("完了しました（追加 " + addedCount + "件・スキップ " + skippedCount + "件）");
 })();

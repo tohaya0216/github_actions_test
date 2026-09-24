@@ -38,6 +38,11 @@
   color: #7a4a00;
 }
 
+.sw-status-success {
+  background: #d4edda;
+  color: #14532d;
+}
+
 #sw-detector-banner {
   position: fixed;
   bottom: 16px;
