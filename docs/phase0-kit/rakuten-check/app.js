@@ -57,6 +57,7 @@
       extraPointPct: parseFloat($("extraPoint").value) || 0,
       fallbackFbaFee: parseFloat($("fallbackFba").value) || 0,
       perItemFee: parseFloat($("perItemFee").value) || 0,
+      feeTaxRate: $("feeTax").checked ? 0.1 : 0,
       famousBrands: $("famousBrands").value.split("\n").map((s) => s.trim()).filter(Boolean),
       treatUnlistedBrandAsSafe: $("unlistedSafe").checked,
       maxRows: parseInt($("maxRows").value, 10) || 100,
@@ -72,6 +73,7 @@
       if (p.extraPointPct != null) $("extraPoint").value = p.extraPointPct;
       if (p.fallbackFbaFee != null) $("fallbackFba").value = p.fallbackFbaFee;
       if (p.perItemFee != null) $("perItemFee").value = p.perItemFee;
+      if (p.feeTaxRate != null) $("feeTax").checked = p.feeTaxRate > 0;
       if (p.famousBrands) $("famousBrands").value = p.famousBrands.join("\n");
       if (p.treatUnlistedBrandAsSafe != null) $("unlistedSafe").checked = p.treatUnlistedBrandAsSafe;
       if (p.maxRows) $("maxRows").value = p.maxRows;
@@ -374,7 +376,7 @@
     const checkedAt = new Date().toISOString().slice(0, 10);
     const headers = [
       "seller_name", "checked_at", "research_minutes", "category", "rakuten_matched", "matched_by", "asin", "product_name", "model", "amazon_price", "rakuten_price", "rakuten_shop",
-      "rakuten_url", "point_pct", "effective_cost", "referral_fee_rate", "fba_fee", "per_item_fee", "profit",
+      "rakuten_url", "point_pct", "effective_cost", "referral_fee_rate", "fba_fee", "per_item_fee", "fee_tax_rate", "profit",
       "profit_margin", "stress20_profit", "monthly_sales", "seller_count", "reasons",
     ];
     const minutes = $("researchMinutes").value.trim();
@@ -398,6 +400,7 @@
       referral_fee_rate: r.referral ?? "",
       fba_fee: r.fba ?? "",
       per_item_fee: r.perItemFee ?? "",
+      fee_tax_rate: r.feeTaxRate ?? "",
       profit: r.profit != null ? Math.round(r.profit) : "",
       profit_margin: r.margin != null ? r.margin.toFixed(3) : "",
       stress20_profit: r.stress20 != null ? Math.round(r.stress20) : "",

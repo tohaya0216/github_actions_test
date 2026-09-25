@@ -102,6 +102,12 @@
         <p class="hint">小口出品は100円（税抜）。大口出品に切り替えたら0にする。</p>
       </div>
       <div>
+        <label><input id="feeTax" type="checkbox" checked style="width:auto">
+          Amazonの手数料に消費税（10%）を加える</label>
+        <p class="hint">Amazonの手数料は税抜表示で、実際は10%上乗せで差し引かれます。
+          Phase 1で実際の手数料と比べ、二重に数えていると分かったら外してください。</p>
+      </div>
+      <div>
         <label for="researchMinutes">このCSVの作業時間（分・任意）</label>
         <input id="researchMinutes" type="number" step="5" placeholder="例：30">
         <p class="hint">Keepaでの準備から確認までにかかった時間。集計で「1時間あたりの成果」を出すのに使います。</p>

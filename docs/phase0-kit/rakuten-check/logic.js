@@ -380,7 +380,11 @@
 
     // 小口出品は1個売れるごとに基本成約料（100円）がかかる。大口出品なら0。
     const perItemFee = Number(opts.perItemFee) || 0;
-    const profitAt = (price) => price - effectiveCost - price * referral - fba - perItemFee;
+    // Amazonの手数料は税抜表示で、実際には消費税10%が上乗せされて差し引かれる
+    // （免税事業者は取り戻せないのでそのまま費用になる）。0にすれば上乗せしない。
+    const feeTax = 1 + (Number(opts.feeTaxRate) || 0);
+    const profitAt = (price) =>
+      price - effectiveCost - (price * referral + fba + perItemFee) * feeTax;
     const profit = profitAt(p.amazonPrice);
     const margin = p.amazonPrice ? profit / p.amazonPrice : 0;
     const stress20 = profitAt(p.amazonPrice * (1 - CONFIG.STRESS_DROP_2));
@@ -438,6 +442,7 @@
       referral,
       fba,
       perItemFee,
+      feeTaxRate: Number(opts.feeTaxRate) || 0,
       profit,
       margin,
       stress20,

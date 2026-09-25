@@ -14,6 +14,7 @@ Amazonの手数料は、セラーセントラルのペイメントレポート�
 
 外部ライブラリ不要。使い方:
     python3 summarize_log.py purchase-log.csv
+    python3 summarize_log.py purchase-log.csv --monthly-fixed 10690 --months 1   # 固定費も引く
 """
 
 import csv
@@ -40,9 +41,15 @@ def to_date(value):
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        sys.exit("使い方: python3 summarize_log.py purchase-log.csv")
-    path = Path(sys.argv[1])
+    import argparse
+    parser = argparse.ArgumentParser(description="仕入れ記録の集計")
+    parser.add_argument("log", type=Path, help="purchase-log.csv")
+    parser.add_argument("--monthly-fixed", type=float, default=0,
+                        help="毎月の固定費（円）。例：大口出品5,390円＋Keepa約5,300円なら10690")
+    parser.add_argument("--months", type=float, default=1,
+                        help="この記録の期間（か月）。固定費×か月数を利益から引く")
+    args = parser.parse_args()
+    path = args.log
     with path.open(newline="", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
     if not rows:
@@ -100,9 +107,14 @@ def main() -> None:
     if drops:
         print(f"出品価格からの値下がり: 平均{sum(drops) / len(drops):.0%}（15-3のストレステストは-20%想定）")
     print(f"在庫（売れ残り）     : {len(unsold)}個・仕入れ額{stock_cost:.0f}円")
+    fixed_total = args.monthly_fixed * args.months
+    if fixed_total:
+        print(f"固定費（{args.months:g}か月分）  : {fixed_total:.0f}円")
+        print(f"固定費を引いた利益   : {total_profit - fixed_total:.0f}円")
     if total_minutes:
         print(f"作業時間の合計       : {total_minutes:.0f}分")
-        print(f"時給                 : {total_profit / (total_minutes / 60):.0f}円/時"
+        print(f"時給                 : {(total_profit - fixed_total) / (total_minutes / 60):.0f}円/時"
+              f"{'（固定費を引いた後）' if fixed_total else ''}"
               "（15-5の例：2,000円/時なら副業として成立、857円/時だと魅力が薄い）")
     print("=" * 60)
 

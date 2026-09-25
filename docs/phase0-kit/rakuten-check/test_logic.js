@@ -214,4 +214,11 @@ test("作業時間から1時間あたりの発見件数と見込み利益を出�
   assert.strictEqual(L.aggregateResults([{ seller_name: "Z", category: "A", rakuten_matched: "yes" }]).overall.aPerHour, null);
 });
 
+test("Amazonの手数料に消費税を上乗せする", () => {
+  const ev = L.evaluate(ps[0], rakutenOD, Object.assign({}, opts, { perItemFee: 100, feeTaxRate: 0.1 }));
+  // 手数料 698+434+100=1232 に10%上乗せ → 1355.2。利益 6980-3800-1355.2=1824.8
+  assert.strictEqual(Math.round(ev.profit), 1825);
+  assert.strictEqual(ev.feeTaxRate, 0.1);
+});
+
 console.log("すべて成功");
