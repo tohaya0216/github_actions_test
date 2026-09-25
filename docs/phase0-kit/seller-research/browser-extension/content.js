@@ -16,7 +16,7 @@
   // manifest.jsonのversionと手動で合わせる。画面上のステータス表示にも出すことで、
   // Kiwi Browser等で「再読み込みが本当に反映されたか」を拡張機能管理画面を
   // 開かずにその場で確認できるようにする（2026-09-23追加）。
-  const VERSION = "0.5.2";
+  const VERSION = "0.5.3";
   const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
   const LOG_PREFIX = "[seller-watch]";
 

@@ -48,9 +48,44 @@
         font-size: 12px;
         margin-top: 4px;
       }
+      .due-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 8px;
+        font-size: 12px;
+      }
+      .due-list li {
+        border-bottom: 1px solid #eee;
+        padding: 6px 0;
+      }
+      .due-meta {
+        color: #666;
+        font-size: 11px;
+      }
+      .due-actions {
+        margin-top: 4px;
+      }
+      .due-actions button,
+      .due-actions select {
+        font-size: 11px;
+        margin: 0 4px 0 0;
+      }
+      #due-status {
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
     </style>
   </head>
   <body>
+    <h1>今日見るセラー（定点観測）</h1>
+    <p class="hint">
+      Watchlistから、見直しの時期が来たセラーを出します
+      （S/Aランクは14日ごとに新着出品を確認、全セラーは90日ごとに評価し直す）。
+    </p>
+    <button id="load-due">リストを更新</button>
+    <div id="due-status"></div>
+    <div id="due-lists"></div>
+
     <h1>共有データストアの設定</h1>
     <p class="hint">
       PC・Kiwi Browser・ブックマークレットで判定履歴・監視リストを共有する

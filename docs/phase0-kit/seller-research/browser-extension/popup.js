@@ -111,6 +111,181 @@ async function resetSeen() {
   }
 }
 
+// ---- 今日見るセラー（check_watchlist_freshness.py と同じ基準） ----
+const EVALUATION_INTERVAL_DAYS = 90;
+const CHECK_INTERVAL_DAYS = 14;
+const MONITORED_RATINGS = ["S", "A"];
+
+function todayStr() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function daysSince(dateStr, today) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || "").trim())) return null;
+  const ms = Date.parse(`${today}T00:00:00Z`) - Date.parse(`${dateStr.trim()}T00:00:00Z`);
+  return Math.floor(ms / 86400000);
+}
+
+function findDueSellers(records, today) {
+  const recheck = [];
+  const reevaluate = [];
+  for (const r of records) {
+    const f = r.fields || {};
+    if (!f.seller_id) continue;
+    const rating = String(f.quality_rating || "").trim().toUpperCase();
+    const item = { id: r.id, sellerId: f.seller_id, name: f.seller_name || f.seller_id, rating };
+
+    const evalDays = daysSince(f.last_evaluated_date, today);
+    if (evalDays == null || evalDays >= EVALUATION_INTERVAL_DAYS) {
+      reevaluate.push(Object.assign({ days: evalDays }, item));
+    }
+    if (MONITORED_RATINGS.includes(rating) && f.status !== "excluded") {
+      const checkDays = daysSince(f.last_checked_date, today);
+      if (checkDays == null || checkDays >= CHECK_INTERVAL_DAYS) {
+        recheck.push(Object.assign({ days: checkDays }, item));
+      }
+    }
+  }
+  return { recheck, reevaluate };
+}
+
+async function patchWatchlist(recordId, fields) {
+  const { airtableBaseId, airtableToken } = await chrome.storage.local.get(DEFAULT_AIRTABLE);
+  await airtableRequest(airtableBaseId, airtableToken, "PATCH", "Watchlist", {
+    body: { records: [{ id: recordId, fields }] },
+  });
+}
+
+function renderDueList(title, items, makeActions) {
+  const wrap = document.createElement("div");
+  const h = document.createElement("div");
+  h.style.fontWeight = "bold";
+  h.style.fontSize = "12px";
+  h.textContent = `${title}（${items.length}件）`;
+  wrap.appendChild(h);
+  const ul = document.createElement("ul");
+  ul.className = "due-list";
+  if (!items.length) {
+    const li = document.createElement("li");
+    li.textContent = "なし";
+    ul.appendChild(li);
+  }
+  for (const it of items) {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.href = `https://www.amazon.co.jp/s?me=${encodeURIComponent(it.sellerId)}`;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = it.name;
+    const meta = document.createElement("div");
+    meta.className = "due-meta";
+    meta.textContent = `ランク:${it.rating || "未評価"}・${it.days == null ? "記録なし" : `${it.days}日経過`}`;
+    const actions = document.createElement("div");
+    actions.className = "due-actions";
+    makeActions(it, actions, li);
+    li.append(a, meta, actions);
+    ul.appendChild(li);
+  }
+  wrap.appendChild(ul);
+  return wrap;
+}
+
+function markDone(li, text) {
+  li.style.opacity = "0.5";
+  li.querySelector(".due-actions").textContent = text;
+}
+
+async function loadDueSellers() {
+  const statusEl = document.getElementById("due-status");
+  const listsEl = document.getElementById("due-lists");
+  const { airtableBaseId, airtableToken } = await chrome.storage.local.get(DEFAULT_AIRTABLE);
+  if (!airtableBaseId || !airtableToken) {
+    statusEl.textContent = "先に共有データストアを設定してください。";
+    return;
+  }
+  statusEl.textContent = "読み込み中…";
+  listsEl.textContent = "";
+  try {
+    const records = [];
+    let offset;
+    do {
+      const data = await airtableRequest(airtableBaseId, airtableToken, "GET", "Watchlist", {
+        query: offset ? `offset=${offset}` : undefined,
+      });
+      records.push(...(data.records || []));
+      offset = data.offset;
+    } while (offset);
+
+    const today = todayStr();
+    const { recheck, reevaluate } = findDueSellers(records, today);
+    statusEl.textContent = `Watchlist ${records.length}件を確認しました。`;
+
+    listsEl.appendChild(
+      renderDueList("新着出品を確認する（S/Aランク）", recheck, (it, actions, li) => {
+        const btn = document.createElement("button");
+        btn.textContent = "確認した";
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          try {
+            await patchWatchlist(it.id, { last_checked_date: today });
+            markDone(li, `記録しました（last_checked_date=${today}）`);
+          } catch (e) {
+            btn.disabled = false;
+            alert(`記録できませんでした: ${e.message}`);
+          }
+        });
+        actions.appendChild(btn);
+      })
+    );
+
+    listsEl.appendChild(
+      renderDueList("評価し直す（照合ツールで判定してから）", reevaluate, (it, actions, li) => {
+        const sel = document.createElement("select");
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "選ぶ";
+        sel.appendChild(placeholder);
+        ["S", "A", "B", "C"].forEach((r) => {
+          const opt = document.createElement("option");
+          opt.value = r;
+          opt.textContent = r;
+          if (r === it.rating) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        const btn = document.createElement("button");
+        btn.textContent = "評価を記録";
+        btn.addEventListener("click", async () => {
+          const rating = sel.value;
+          if (!rating) {
+            alert("評価（S/A/B/C）を選んでください。");
+            return;
+          }
+          // B/Cは定点観測の対象外にする（seller-research/README.md の質による絞り込み運用）
+          const fields = {
+            quality_rating: rating,
+            last_evaluated_date: today,
+            status: MONITORED_RATINGS.includes(rating) ? "active" : "excluded",
+          };
+          btn.disabled = true;
+          try {
+            await patchWatchlist(it.id, fields);
+            markDone(li, `記録しました（${rating}・${fields.status}）`);
+          } catch (e) {
+            btn.disabled = false;
+            alert(`記録できませんでした: ${e.message}`);
+          }
+        });
+        actions.append(sel, btn);
+      })
+    );
+  } catch (e) {
+    statusEl.textContent = `読み込めませんでした: ${e.message}`;
+  }
+}
+
+document.getElementById("load-due").addEventListener("click", loadDueSellers);
 document.getElementById("save-api").addEventListener("click", saveApiConfig);
 document.getElementById("test-api").addEventListener("click", testConnection);
 document
