@@ -259,4 +259,11 @@ test("楽天がAmazonの半額未満なら警告してA判定にしない", () =
   assert.ok(ev.reasons.some((r) => r.includes("半額未満")));
 });
 
+test("画面とプログラムのバージョンがそろっている", () => {
+  const html = require("fs").readFileSync(require("path").join(__dirname, "index.html"), "utf-8");
+  const v = L.TOOL_VERSION;
+  assert.ok(html.includes(`<meta name="tool-version" content="${v}">`), "index.htmlのmetaがTOOL_VERSIONと違う");
+  assert.ok(html.includes(`logic.js?v=${v}`) && html.includes(`app.js?v=${v}`), "scriptの?v=がTOOL_VERSIONと違う");
+});
+
 console.log("すべて成功");

@@ -1,6 +1,10 @@
 // 楽天照合ツールの計算・判定ロジック（画面から切り離し、Node.jsでもテストできるようにしている）。
 // 判定基準は ../analyze.py の CONFIG / _judge と揃えること。
 (function (root) {
+  // 画面に表示するバージョン。変更したら index.html の meta と script の ?v= も同じ値にする
+  // （test_logic.js が食い違いを検出する）。
+  const TOOL_VERSION = "2026.09.25-6";
+
   const CONFIG = {
     DEFAULT_REFERRAL_FEE_RATE: 0.15,
     MIN_PROFIT_MARGIN: 0.2,
@@ -486,6 +490,7 @@
   }
 
   const api = {
+    TOOL_VERSION,
     CONFIG,
     parseCSV,
     toCSV,

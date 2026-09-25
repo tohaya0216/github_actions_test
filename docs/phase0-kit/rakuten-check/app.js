@@ -508,5 +508,20 @@
     $("aggResult").hidden = false;
   });
 
+  // 画面（HTML）とプログラム（JS）のバージョンを表示し、食い違えば古いファイルが残っていると知らせる
+  (function showVersion() {
+    const meta = document.querySelector('meta[name="tool-version"]');
+    const htmlVersion = meta ? meta.content : "不明";
+    const el = $("versionInfo");
+    if (htmlVersion === L.TOOL_VERSION) {
+      el.textContent = `バージョン ${L.TOOL_VERSION}`;
+    } else {
+      el.textContent = `古いファイルが残っています（画面 ${htmlVersion} / プログラム ${L.TOOL_VERSION}）。` +
+        "強制再読み込み（Windows: Ctrl+Shift+R、Mac: Cmd+Shift+R）をしてください";
+      el.classList.add("err");
+      el.style.color = "var(--err)";
+    }
+  })();
+
   restore();
 })();
