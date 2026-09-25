@@ -164,4 +164,32 @@ test("対応づけられなかった重要な列を知らせる", () => {
   assert.ok(!missing.includes("商品名"));
 });
 
+test("複数セラーの結果を集計し、15-4の目安で判断する", () => {
+  const rows = [];
+  const add = (seller, n, cat, matched) => {
+    for (let i = 0; i < n; i++) rows.push({ seller_name: seller, category: cat, rakuten_matched: matched });
+  };
+  add("店X", 2, "A", "yes");
+  add("店X", 8, "C", "yes");
+  add("店X", 100, "C", "no");
+  add("店Y", 1, "B", "yes");
+  add("店Y", 9, "C", "yes");
+  const agg = L.aggregateResults(rows);
+  const x = agg.sellers.find((s) => s.name === "店X");
+  assert.strictEqual(x.total, 110);
+  assert.strictEqual(x.matched, 10);
+  assert.strictEqual(x.passRate, 0.2);
+  assert.strictEqual(agg.overall.matched, 20);
+  assert.strictEqual(agg.overall.A, 2);
+  assert.strictEqual(agg.overall.passRate, 0.1);
+  assert.ok(agg.verdict.startsWith("有望"));
+
+  assert.ok(L.aggregateResults(rows.slice(0, 5)).verdict.includes("まだ判断できません"));
+  const low = [];
+  for (let i = 0; i < 50; i++) low.push({ seller_name: "Z", category: i === 0 ? "A" : "C", rakuten_matched: "yes" });
+  assert.ok(L.aggregateResults(low).verdict.startsWith("効率化が前提"));
+  const none = low.map((r) => Object.assign({}, r, { category: "C" }));
+  assert.ok(L.aggregateResults(none).verdict.startsWith("厳しい"));
+});
+
 console.log("すべて成功");

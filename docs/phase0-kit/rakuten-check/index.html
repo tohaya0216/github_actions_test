@@ -169,6 +169,25 @@ Nikon
       </table>
     </div>
   </section>
+
+  <section>
+    <h2>6. これまでの結果を集計する</h2>
+    <p class="hint">「結果をCSVで保存」したファイルを複数まとめて選ぶと、セラーごとの成績と、
+      この手法を続けるべきかの目安（dennou-sedori-tips.md 15-4の通過率）を出します。</p>
+    <input id="aggFiles" type="file" accept=".csv,text/csv" multiple>
+    <div id="aggResult" hidden>
+      <p id="aggVerdict" class="status"></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>セラー</th><th>全商品</th><th>楽天で照合</th><th>A</th><th>B</th><th>C</th><th>通過率</th>
+          </tr></thead>
+          <tbody id="aggBody"></tbody>
+        </table>
+      </div>
+      <p class="hint">通過率＝A判定 ÷ 楽天で同じ商品が見つかった件数。Amazon側の情報だけで見送った商品は分母に入れません。</p>
+    </div>
+  </section>
 </main>
 <script src="logic.js"></script>
 <script src="app.js"></script>

@@ -314,6 +314,45 @@
     return { rating, why, checked: checked.length, a, b };
   }
 
+  // 保存した結果CSV（複数セラー分）をまとめ、手法の通過率を出す。
+  // 通過率は「A判定 ÷ 楽天で同じ商品が見つかった件数」。dennou-sedori-tips.md 15-4 の
+  // 通過率は「両モールの価格が分かった候補」が分母なので、それに揃えている
+  // （Amazon側だけで弾いた商品まで分母に入れると、数百件のカタログで極端に小さくなる）。
+  // 15-4の目安（15%前後=有望／3%前後=効率化が前提／0〜1%=手法を再考）の中間で区切る。
+  function aggregateResults(rows) {
+    const bySeller = new Map();
+    const blank = () => ({ total: 0, matched: 0, A: 0, B: 0, C: 0 });
+    const overall = blank();
+    for (const r of rows) {
+      const name = r.seller_name || "（セラー名なし）";
+      if (!bySeller.has(name)) bySeller.set(name, blank());
+      for (const agg of [bySeller.get(name), overall]) {
+        agg.total++;
+        if (r.rakuten_matched === "yes") {
+          agg.matched++;
+          if (agg[r.category] != null) agg[r.category]++;
+        }
+      }
+    }
+    const withRate = (agg) =>
+      Object.assign(agg, { passRate: agg.matched ? agg.A / agg.matched : null });
+    const sellers = [...bySeller.entries()].map(([name, agg]) =>
+      Object.assign({ name }, withRate(agg))
+    );
+    withRate(overall);
+    let verdict;
+    if (overall.matched < 20) {
+      verdict = `楽天で照合できた商品が${overall.matched}件と少ないため、まだ判断できません（20件以上を目安に）`;
+    } else if (overall.passRate >= 0.08) {
+      verdict = "有望（15-4の「15%前後」の水準）。この手法で仕入れ（Phase 1）に進む価値があります";
+    } else if (overall.passRate >= 0.02) {
+      verdict = "効率化が前提（15-4の「3%前後」の水準）。候補の母数を増やす工夫やツール導入が必要です";
+    } else {
+      verdict = "厳しい（15-4の「0〜1%」の水準）。手法そのものを見直す段階です";
+    }
+    return { sellers, overall, verdict };
+  }
+
   function sellerNameLooksSame(shopName, sellerName) {
     const a = normalizeForMatch(shopName);
     const b = normalizeForMatch(sellerName);
@@ -410,6 +449,7 @@
     pickRakutenMatchByJan,
     parseJan,
     suggestSellerRating,
+    aggregateResults,
     sellerNameLooksSame,
     evaluate,
   };

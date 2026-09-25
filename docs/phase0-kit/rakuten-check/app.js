@@ -354,13 +354,19 @@
   }
 
   function exportCsv() {
+    const sellerName = $("sellerName").value.trim();
+    const checkedAt = new Date().toISOString().slice(0, 10);
     const headers = [
-      "category", "asin", "product_name", "model", "amazon_price", "rakuten_price", "rakuten_shop",
+      "seller_name", "checked_at", "category", "rakuten_matched", "matched_by", "asin", "product_name", "model", "amazon_price", "rakuten_price", "rakuten_shop",
       "rakuten_url", "point_pct", "effective_cost", "referral_fee_rate", "fba_fee", "profit",
       "profit_margin", "stress20_profit", "monthly_sales", "seller_count", "reasons",
     ];
     const rows = results.map((r) => ({
+      seller_name: sellerName,
+      checked_at: checkedAt,
       category: r.category,
+      rakuten_matched: r.modelMatch === true ? "yes" : "no",
+      matched_by: r.matchedBy || "",
       asin: r.product.asin,
       product_name: r.product.title,
       model: r.product.model,
@@ -382,8 +388,12 @@
     const blob = new Blob(["﻿" + L.toCSV(headers, rows)], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `rakuten-check-${new Date().toISOString().slice(0, 10)}.csv`;
+    // ファイル名は英数字だけにする（日本語のセラー名を入れるとブラウザによって名前が無視される）。
+    // セラー名はCSVの seller_name 列に入っている。
+    a.download = `rakuten-check-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}.csv`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
@@ -425,6 +435,45 @@
   });
   $("stop").addEventListener("click", () => (stopRequested = true));
   $("exportCsv").addEventListener("click", exportCsv);
+
+  function readFileText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(file, "utf-8");
+    });
+  }
+
+  $("aggFiles").addEventListener("change", async (e) => {
+    const files = [...e.target.files];
+    if (!files.length) return;
+    const rows = [];
+    const skipped = [];
+    for (const f of files) {
+      const parsed = L.parseCSV(await readFileText(f));
+      if (!parsed.headers.includes("rakuten_matched")) {
+        skipped.push(f.name);
+        continue;
+      }
+      rows.push(...parsed.records);
+    }
+    const agg = L.aggregateResults(rows);
+    const pct = (v) => (v == null ? "-" : `${(v * 100).toFixed(1)}%`);
+    const body = $("aggBody");
+    body.textContent = "";
+    for (const s of agg.sellers.concat([Object.assign({ name: "合計" }, agg.overall)])) {
+      const tr = document.createElement("tr");
+      [s.name, s.total, s.matched, s.A, s.B, s.C].forEach((v, idx) => cell(tr, v, idx ? "num" : ""));
+      cell(tr, pct(s.passRate), "num");
+      if (s.name === "合計") tr.style.fontWeight = "700";
+      body.appendChild(tr);
+    }
+    let verdict = `判断の目安：${agg.verdict}（通過率 ${pct(agg.overall.passRate)}）`;
+    if (skipped.length) verdict += `。このツールの結果CSVではないため読み飛ばしたファイル：${skipped.join("、")}`;
+    setStatus($("aggVerdict"), verdict, skipped.length > 0);
+    $("aggResult").hidden = false;
+  });
 
   restore();
 })();
