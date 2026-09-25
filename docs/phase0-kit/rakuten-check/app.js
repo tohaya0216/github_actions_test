@@ -275,6 +275,17 @@
     return a;
   }
 
+  // 自動で見つからなかった商品を手で確かめるための、楽天の通常の検索結果ページへのリンク
+  function rakutenSearchLink(p) {
+    const keyword = p.model || p.jan || "";
+    const div = document.createElement("div");
+    if (!keyword) return div;
+    div.appendChild(
+      safeLink(`https://search.rakuten.co.jp/search/mall/${encodeURIComponent(keyword)}/`, "楽天で探す")
+    );
+    return div;
+  }
+
   function cell(tr, content, cls) {
     const td = document.createElement("td");
     if (cls) td.className = cls;
@@ -330,7 +341,10 @@
           ? "型番不一致（参考価格）"
           : `${r.rakutenItem.shopName || ""}${r.matchedBy === "JAN" ? "（JANで一致）" : ""}`;
         wrap.appendChild(shop);
+        if (r.modelMatch === false) wrap.appendChild(rakutenSearchLink(p));
         cell(tr, wrap, "num");
+      } else if (r.modelMatch === false) {
+        cell(tr, rakutenSearchLink(p), "num");
       } else {
         cell(tr, r.skippedRakuten ? "（省略）" : "", "num");
       }
