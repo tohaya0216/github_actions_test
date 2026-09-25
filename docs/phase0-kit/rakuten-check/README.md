@@ -127,6 +127,7 @@ S/Aのセラーは定点観測を続け、B/Cは`status`を`excluded`にして�
 | `index.html` | 画面 |
 | `app.js` | 画面の動作と楽天APIの呼び出し |
 | `logic.js` | CSV読み込み・型番照合・利益計算・判定（画面から独立。Node.jsでテスト可能） |
+| `claude-in-chrome-prompt-product-finder.md` | Keepa製品ファインダーでの絞り込みとCSV書き出しを「Claude in Chrome」に任せる指示文 |
 | `astra-prompt-verify-candidates.md` | A/B判定の商品の楽天側の最終確認をAstraに任せるプロンプト |
 | `test_logic.js` | `logic.js`のテスト。`node test_logic.js`で実行（外部ライブラリ不要） |
 
