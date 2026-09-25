@@ -126,7 +126,13 @@
     csv = parsed;
     mapping = L.detectColumns(parsed.headers);
     renderMapping();
-    setStatus($("csvStatus"), `${sourceLabel}：${parsed.records.length}件の商品を読み込みました`);
+    const missing = L.missingImportantColumns(mapping);
+    let msg = `${sourceLabel}：${parsed.records.length}件の商品を読み込みました`;
+    if (missing.length) {
+      msg += `。自動で見つからなかった列：${missing.join("、")}。下の「列の対応」で選んでください` +
+        "（見つからないままでも実行はできますが、その項目は「未確認」扱いになります）";
+    }
+    setStatus($("csvStatus"), msg, missing.length > 0);
     $("run").disabled = false;
   }
 

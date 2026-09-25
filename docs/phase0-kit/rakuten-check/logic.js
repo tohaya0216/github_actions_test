@@ -132,6 +132,21 @@
     return mapping;
   }
 
+  // 判定に効く列のうち、自動で対応づけられなかったものを画面に出す名前で返す。
+  function missingImportantColumns(mapping) {
+    const groups = [
+      [["title"], "商品名"],
+      [["buyBoxPrice", "newPrice"], "Amazon価格"],
+      [["model", "partNumber", "ean"], "型番・JAN（なければ商品名から推測）"],
+      [["amazonPrice"], "Amazon本体の価格"],
+      [["offerCount"], "新品出品者数"],
+      [["boughtPastMonth"], "過去1か月の購入数"],
+      [["referralFeePct"], "販売手数料率"],
+      [["fbaFee"], "FBA手数料"],
+    ];
+    return groups.filter(([fields]) => !fields.some((f) => mapping[f])).map(([, label]) => label);
+  }
+
   // "¥ 1,234" "1,234円" "10.5 %" "-" などから数値を取り出す。取れなければnull。
   function parseNumber(value) {
     if (value == null) return null;
@@ -383,6 +398,7 @@
     parseCSV,
     toCSV,
     detectColumns,
+    missingImportantColumns,
     parseNumber,
     normalizeForMatch,
     extractModelFromTitle,

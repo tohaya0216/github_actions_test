@@ -155,4 +155,13 @@ test("セラー評価の目安", () => {
   assert.strictEqual(L.suggestSellerRating(withUnmatched).rating, null);
 });
 
+test("対応づけられなかった重要な列を知らせる", () => {
+  assert.deepStrictEqual(L.missingImportantColumns(mapping), []);
+  const partial = L.detectColumns(["ASIN", "商品名", "価格"]);
+  const missing = L.missingImportantColumns(partial);
+  assert.ok(missing.includes("Amazon価格"));
+  assert.ok(missing.includes("型番・JAN（なければ商品名から推測）"));
+  assert.ok(!missing.includes("商品名"));
+});
+
 console.log("すべて成功");
