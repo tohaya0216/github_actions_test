@@ -1,0 +1,82 @@
+# セラーリサーチ 実行手順（最新版・まずここを読む）
+
+2026-09-25時点の、いちばん手数の少ないやり方。細かい理由や手作業版は各フォルダのREADMEにある。
+【あなた】【自動】【Astra】で誰の作業かを示す。
+
+## 全体像（4ステップ）
+
+```
+① セラーを集める ── 普段のAmazon巡回のついでに、拡張機能が見つけてAirtableに記録
+② セラーを絞る   ── Astraに店名を渡して、メーカー・代理店の直販店を除く（任意）
+③ 商品を判定する ── KeepaのCSVを照合ツールに入れると、楽天の価格・利益・A/B/Cが出る
+④ 最終確認・記録 ── A判定の商品だけ自分の目で確認し、セラーの評価をAirtableに書く
+```
+
+---
+
+## 最初に1回だけやる準備
+
+| 準備 | 状態 | 手順 |
+|---|---|---|
+| Airtable（セラーの記録先） | 済 | `phase0-kit/seller-research/airtable/README.md` |
+| 拡張機能（PC・Kiwi Browser） | 済 | `phase0-kit/seller-research/browser-extension/README.md` |
+| GitHub Pagesの有効化 | **未** | Settings → Pages → 「Deploy from a branch」→ ブランチ`claude/dennou-sedori-tips-llwxo2`、フォルダ`/docs` |
+| 楽天APIの登録 | **未** | `phase0-kit/rakuten-check/README.md`。「許可されたWebサイト」は`tohaya0216.github.io` |
+| Keepa有料版 | **未** | 使う月だけ加入し、加入直後に自動更新を止める（約€29/月） |
+
+---
+
+## ① セラーを集める【あなた＋自動】
+
+1. PCかKiwi Browserで、普段どおりAmazonの商品ページや出品者ページを見る
+2. 評価数50〜400件の新しいセラーが見つかると、右下にバナーが出る → 「追加する」
+3. AirtableのWatchlistに記録される（PCとスマホで同じデータを共有）
+
+コツ：「他の出品を見る」一覧には評価数が出ないことが多い。**出品者名をタップして
+出品者ページを開く**と判定されやすい。
+
+## ② セラーを絞る【Astra】（任意・5分）
+
+1. Watchlistの`seller_id`と`seller_name`をコピー
+2. `phase0-kit/seller-research/astra-prompt-seller-screening.md`の「---」の間をAstraに貼り、リストを入れる
+3. 返ってきた判定で振り分ける
+   - `skip` → Airtableで`status`を`excluded`に
+   - `go` → ③へ
+   - `caution`/`unknown` → 後回し（`go`を先に処理）
+
+## ③ 商品を判定する【あなた＋自動】（1セラー数分）
+
+1. Keepaのセラー検索にseller_idを入れ、出品商品をCSVでダウンロード
+2. 照合ツールを開く：`https://tohaya0216.github.io/github_actions_test/phase0-kit/rakuten-check/`
+3. 「このCSVのセラー名」にセラー名を入れ、CSVを読み込んで「楽天で照合して判定する」
+4. 数分待つと、A（有望）／B（要確認）／C（見送り）の一覧と、セラー評価の目安が出る
+5. 「結果をCSVで保存」で記録を残す（`phase0-kit/research-log/`に置くと後で集計できる）
+
+## ④ 最終確認・記録【あなた】
+
+**A判定の商品だけ**、仕入れる前に次を確認する。
+
+- [ ] 楽天の商品ページを開き、**Amazonと同じ商品か**（型番・容量・色・セット内容）を目で確認
+- [ ] AmazonのFBA料金シミュレーターで**実際の手数料**を確認（ツールの値がKeepa由来でも念のため）
+- [ ] セラーセントラルで**出品制限がないか**（ブランド・カテゴリの出品許可）を確認
+- [ ] 電気製品・ACアダプター付きなら**PSEマーク**を確認（楽器・エフェクターは特に注意）
+- [ ] 楽天側に「転売お断り」の記載がないか、商品説明とショップの注意書きを確認
+- [ ] 最初は**1〜2個だけ**買う（買い占めに見える購入はアカウント停止のリスク）
+- [ ] 支払いに**楽天カードを使わない**（カード規約でせどり仕入れへの使用が禁止）
+
+最後に、照合ツールが出した「セラー評価の目安」をWatchlistに書く。
+
+- `quality_rating`：S/A/B/C
+- `last_evaluated_date`：今日の日付
+- S/Aは今後も定点観測、B/Cは`status`を`excluded`にして追わない
+
+---
+
+## 困ったとき
+
+| 症状 | 見るところ |
+|---|---|
+| 拡張機能のバナーが出ない／画面左上の表示がおかしい | `phase0-kit/seller-research/browser-extension/README.md` |
+| 照合ツールで楽天APIエラー（403など） | 楽天APIの「許可されたWebサイト」が`tohaya0216.github.io`になっているか。GitHub PagesのURLから開いているか（ファイルを直接開くと動かない） |
+| 照合ツールの列の対応がおかしい | 画面の「列の対応」で選び直す。直らなければKeepaのCSVの1行目（列名）をClaudeに見せる |
+| A判定がまったく出ない | 手法の判断材料になる。`dennou-sedori-tips.md` 15-4の通過率の目安と比べる |
