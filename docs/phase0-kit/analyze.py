@@ -64,6 +64,7 @@ CONFIG = {
     "STRESS_DROP_1": 0.10,              # 15-3: -10%ストレステスト
     "STRESS_DROP_2": 0.20,              # 15-3: -20%ストレステスト
     "LOW_SELLER_COUNT_THRESHOLD": 2,    # 11-3: 出品者数がこれ以下ならメーカー直接出品を警戒
+    "PER_ITEM_FEE_YEN": 100,            # 小口出品の基本成約料（1個売れるごと・税抜）。大口出品なら0
 }
 
 REQUIRED_COLUMNS = ["asin", "rakuten_price", "amazon_price"]
@@ -133,7 +134,8 @@ class Candidate:
         self.effective_cost = self.rakuten_price * (1 - self.point_rebate_rate)
 
         def profit_at(price: float) -> float:
-            return price - self.effective_cost - price * self.referral_fee_rate - self.fba_fee
+            return (price - self.effective_cost - price * self.referral_fee_rate
+                    - self.fba_fee - CONFIG["PER_ITEM_FEE_YEN"])
 
         self.profit = profit_at(self.amazon_price)
         self.profit_margin = self.profit / self.amazon_price if self.amazon_price else 0.0
@@ -141,7 +143,8 @@ class Candidate:
         self.stress20_profit = profit_at(self.amazon_price * (1 - CONFIG["STRESS_DROP_2"]))
 
         denom = 1 - self.referral_fee_rate
-        self.break_even_price = (self.effective_cost + self.fba_fee) / denom if denom > 0 else float("inf")
+        fixed = self.effective_cost + self.fba_fee + CONFIG["PER_ITEM_FEE_YEN"]
+        self.break_even_price = fixed / denom if denom > 0 else float("inf")
 
         self._judge()
 
