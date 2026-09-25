@@ -3,7 +3,7 @@
 (function (root) {
   // 画面に表示するバージョン。変更したら index.html の meta と script の ?v= も同じ値にする
   // （test_logic.js が食い違いを検出する）。
-  const TOOL_VERSION = "2026.09.25-9";
+  const TOOL_VERSION = "2026.09.25-10";
 
   const CONFIG = {
     DEFAULT_REFERRAL_FEE_RATE: 0.15,
@@ -25,24 +25,33 @@
     MAX_RAKUTEN_PRICE_RATIO: 1.0,
   };
 
-  // 商品名にこれらを含むものは、型番が一致しても本体ではなく付属品・部品・中古とみなす。
+  // 楽天の商品名にこれらがあり、Amazonの商品名にはない場合は、型番が一致しても
+  // 本体ではなく付属品・部品とみなす（例：「Boss DS-1用 電源アダプタ」。2026-09-25の実データで発覚）。
+  // Amazon側の商品名にも同じ言葉があるなら、その商品自体がアダプター等なので除外しない。
   const ACCESSORY_WORDS = [
     "互換", "交換", "替え", "替芯", "替刃", "部品", "パーツ", "専用", "対応",
     "バンド", "ベルト", "パッキン", "フィルム", "保護", "カバー", "ケース",
-    "中古", "ジャンク", "訳あり", "アウトレット",
+    "アダプタ", "充電器", "電源", "ケーブル", "コード", "ストラップ", "スタンド",
+    "収納", "リモコン", "電池", "バッテリー",
   ];
+  // 本体かどうかに関係なく、状態の理由で仕入れに使わないもの
+  const CONDITION_WORDS = ["中古", "ジャンク", "訳あり", "アウトレット"];
 
-  function looksLikeAccessory(itemName) {
+  function looksLikeAccessory(itemName, amazonTitle) {
     const name = String(itemName || "").normalize("NFKC");
-    return ACCESSORY_WORDS.some((w) => name.includes(w));
+    const title = String(amazonTitle || "").normalize("NFKC");
+    if (CONDITION_WORDS.some((w) => name.includes(w))) return true;
+    if (ACCESSORY_WORDS.some((w) => name.includes(w) && !title.includes(w))) return true;
+    // 「for Roland Boss DS-1」のような英語の「〜用」
+    return /\bfor\b/i.test(name) && !/\bfor\b/i.test(title);
   }
 
   // 楽天の結果のうち、候補にしてよいもの（在庫あり・価格が下限以上・付属品らしくない）を安い順に並べる。
-  function usableItems(items, minPrice) {
+  function usableItems(items, minPrice, amazonTitle) {
     return items
       .filter((it) => it.availability == null || Number(it.availability) === 1)
       .filter((it) => !minPrice || Number(it.itemPrice) >= minPrice)
-      .filter((it) => !looksLikeAccessory(it.itemName))
+      .filter((it) => !looksLikeAccessory(it.itemName, amazonTitle))
       .sort((a, b) => Number(a.itemPrice) - Number(b.itemPrice));
   }
 
@@ -77,7 +86,7 @@
 
   // 海外からの発送・並行輸入品は、真贋調査・PSE・到着までの日数のリスクが高い。
   // 本体として一致していても、仕入れる前に目で確かめるためA止めにする。
-  const IMPORT_KEYWORDS = ["並行輸入", "海外輸入", "輸入品", "海外発送", "海外から発送", "海外倉庫", "取り寄せ"];
+  const IMPORT_KEYWORDS = ["並行輸入", "海外輸入", "輸入品", "海外発送", "海外から発送", "海外直送", "海外倉庫", "取り寄せ"];
 
   function parseCSV(text) {
     const rows = [];
@@ -331,9 +340,9 @@
     return (name) => re.test(String(name || "").normalize("NFKC").toUpperCase());
   }
 
-  function pickRakutenMatch(items, model, minPrice) {
+  function pickRakutenMatch(items, model, minPrice, amazonTitle) {
     const isMatch = modelMatcher(model);
-    const sorted = usableItems(items, minPrice);
+    const sorted = usableItems(items, minPrice, amazonTitle);
     const matched = sorted.filter((it) => isMatch(it.itemName));
     return {
       match: matched[0] || null,
@@ -343,8 +352,8 @@
   }
 
   // JANで検索した結果から、商品名か商品説明に同じJANが書かれているものを採用する。
-  function pickRakutenMatchByJan(items, jan, minPrice) {
-    const sorted = usableItems(items, minPrice);
+  function pickRakutenMatchByJan(items, jan, minPrice, amazonTitle) {
+    const sorted = usableItems(items, minPrice, amazonTitle);
     const matched = sorted.filter((it) =>
       `${it.itemName || ""} ${it.itemCaption || ""}`.normalize("NFKC").includes(jan)
     );

@@ -218,7 +218,7 @@
       let matchedBy = null;
       try {
         for (const keyword of L.buildSearchKeywords(p)) {
-          const r = L.pickRakutenMatch(await throttledSearch(keyword, i, minPrice, maxPrice), p.model, minPrice);
+          const r = L.pickRakutenMatch(await throttledSearch(keyword, i, minPrice, maxPrice), p.model, minPrice, p.title);
           if (r.match) {
             found = r;
             matchedBy = "型番";
@@ -227,7 +227,7 @@
           if (!found.cheapestAny) found.cheapestAny = r.cheapestAny;
         }
         if (!found.match && p.jan) {
-          const byJan = L.pickRakutenMatchByJan(await throttledSearch(p.jan, i, minPrice, maxPrice), p.jan, minPrice);
+          const byJan = L.pickRakutenMatchByJan(await throttledSearch(p.jan, i, minPrice, maxPrice), p.jan, minPrice, p.title);
           if (byJan.match) {
             found = byJan;
             matchedBy = "JAN";

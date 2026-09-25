@@ -282,4 +282,23 @@ test("並行輸入・海外発送の商品はA判定にしない", () => {
   assert.ok(ev.reasons.some((r) => r.includes("並行輸入")));
 });
 
+test("本体の型番入りアダプター等を除き、Amazon側も同じ種類なら除かない", () => {
+  const adapter = {
+    itemName: "MaxLLTo 6フィート 9V AC DC 電源アダプタ Roland Boss DS-1 ディストーション 充電器電源用 Power Adaptor for Roland Boss DS-1",
+    itemPrice: 4238, availability: 1,
+  };
+  const body = { itemName: "BOSS DS-1 Distortion ディストーション", itemPrice: 7480, availability: 1 };
+  const title = "BOSS ディストーション DS-1 エフェクター";
+  const r = L.pickRakutenMatch([adapter, body], "DS-1", L.minRakutenPrice(8000), title);
+  assert.strictEqual(r.match.itemPrice, 7480);
+
+  // Amazonの商品自体がACアダプターなら、楽天の同じアダプターは本体として扱う
+  const psa = { itemName: "BOSS PSA-100S ACアダプター", itemPrice: 2500, availability: 1 };
+  const r2 = L.pickRakutenMatch([psa], "PSA-100S", L.minRakutenPrice(3000), "BOSS ACアダプター PSA-100S");
+  assert.strictEqual(r2.match.itemPrice, 2500);
+
+  // 中古は常に除く
+  assert.ok(L.looksLikeAccessory("【中古】BOSS DS-1", "BOSS DS-1 中古"));
+});
+
 console.log("すべて成功");
