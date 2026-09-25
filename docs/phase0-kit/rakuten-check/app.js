@@ -21,6 +21,7 @@
     boughtPastMonth: "過去1か月の購入数",
     referralFeePct: "販売手数料率（%）",
     fbaFee: "FBA手数料",
+    ean: "JAN/EAN",
   };
 
   let csv = null;
@@ -165,7 +166,17 @@
 
     const products = csv.records.map((r) => L.toProduct(r, mapping));
     let apiCalls = 0;
+    let checkedProducts = 0;
     let lastCallAt = 0;
+
+    async function throttledSearch(keyword, i) {
+      const wait = REQUEST_INTERVAL_MS - (Date.now() - lastCallAt);
+      if (wait > 0) await sleep(wait);
+      setStatus($("runStatus"), `照合中… ${i + 1}/${products.length}件目（楽天API ${apiCalls + 1}回目）`);
+      lastCallAt = Date.now();
+      apiCalls++;
+      return searchRakuten(keyword);
+    }
 
     for (let i = 0; i < products.length; i++) {
       if (stopRequested) break;
@@ -176,7 +187,7 @@
         results.push({ product: p, category: "C", reasons: preFails, skippedRakuten: true });
         continue;
       }
-      if (apiCalls >= prefs.maxRows) {
+      if (checkedProducts >= prefs.maxRows) {
         results.push({
           product: p,
           category: "-",
@@ -185,23 +196,32 @@
         });
         continue;
       }
+      checkedProducts++;
 
-      const wait = REQUEST_INTERVAL_MS - (Date.now() - lastCallAt);
-      if (wait > 0) await sleep(wait);
-      setStatus($("runStatus"), `照合中… ${i + 1}/${products.length}件目（楽天API ${apiCalls + 1}回目）`);
-
-      let items;
+      // まず型番で探し、見つからなければJANで探し直す
+      let found = { match: null, cheapestAny: null, matchedCount: 0 };
+      let matchedBy = null;
       try {
-        lastCallAt = Date.now();
-        apiCalls++;
-        items = await searchRakuten(p.model);
+        if (p.model) {
+          found = L.pickRakutenMatch(await throttledSearch(p.model, i), p.model);
+          if (found.match) matchedBy = "型番";
+        }
+        if (!found.match && p.jan) {
+          const byJan = L.pickRakutenMatchByJan(await throttledSearch(p.jan, i), p.jan);
+          if (byJan.match) {
+            found = byJan;
+            matchedBy = "JAN";
+          } else if (!found.cheapestAny) {
+            found.cheapestAny = byJan.cheapestAny;
+          }
+        }
       } catch (e) {
         setStatus($("runStatus"), e.message, true);
         results.push({ product: p, category: "-", reasons: [e.message], skippedRakuten: true });
         break;
       }
 
-      const { match, cheapestAny, matchedCount } = L.pickRakutenMatch(items, p.model);
+      const { match, cheapestAny, matchedCount } = found;
       if (!match) {
         results.push({
           product: p,
@@ -217,7 +237,7 @@
         continue;
       }
       const ev = L.evaluate(p, match, prefs);
-      results.push(Object.assign({ product: p, rakutenItem: match, modelMatch: true, matchedCount }, ev));
+      results.push(Object.assign({ product: p, rakutenItem: match, modelMatch: true, matchedCount, matchedBy }, ev));
     }
 
     $("run").disabled = false;
@@ -276,6 +296,14 @@
       summary.appendChild(s);
     });
 
+    const sr = L.suggestSellerRating(results);
+    const ratingBox = $("sellerRating");
+    ratingBox.textContent = sr.rating
+      ? `このセラーの評価の目安：${sr.rating}（${sr.why}。楽天で同じ商品が見つかった${sr.checked}件のうち）。` +
+        "AirtableのWatchlistで quality_rating と last_evaluated_date を更新してください。" +
+        (sr.rating === "S" || sr.rating === "A" ? "今後も定点観測する対象です。" : "定点観測の対象外（status を excluded）にしてよいです。")
+      : `このセラーの評価の目安：判断できません（${sr.why}）。`;
+
     for (const r of sorted) {
       const p = r.product;
       const tr = document.createElement("tr");
@@ -294,7 +322,7 @@
         shop.className = "hint";
         shop.textContent = r.modelMatch === false
           ? "型番不一致（参考価格）"
-          : r.rakutenItem.shopName || "";
+          : `${r.rakutenItem.shopName || ""}${r.matchedBy === "JAN" ? "（JANで一致）" : ""}`;
         wrap.appendChild(shop);
         cell(tr, wrap, "num");
       } else {

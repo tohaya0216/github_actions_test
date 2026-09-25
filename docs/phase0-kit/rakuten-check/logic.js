@@ -93,7 +93,18 @@
     boughtPastMonth: ["bought in past month", "過去1か月の購入数", "過去1ヶ月"],
     referralFeePct: ["referral fee %", "販売手数料 %", "referral fee"],
     fbaFee: ["fba pick&pack fee", "fba fee", "fba手数料", "fba pick"],
+    ean: ["product codes: ean", "ean", "jan"],
   };
+
+  // KeepaのEAN列は「4901234567890, 0012345678905」のように複数入ることがある。
+  // 13桁のうち、日本のJAN（45/49で始まる）を優先して1つ選ぶ。
+  function parseJan(value) {
+    const codes = String(value || "")
+      .normalize("NFKC")
+      .split(/[,\s;|]+/)
+      .filter((c) => /^\d{13}$/.test(c));
+    return codes.find((c) => /^4[59]/.test(c)) || codes[0] || null;
+  }
 
   function detectColumns(headers) {
     const lower = headers.map((h) => h.toLowerCase());
@@ -181,6 +192,7 @@
       title,
       brand: get("brand") || "",
       model: model || null,
+      jan: parseJan(get("ean")),
       amazonPrice,
       amazonItselfSelling,
       sellerCount: offerCount,
@@ -217,7 +229,7 @@
     if (p.monthlySales != null && p.monthlySales < CONFIG.MIN_MONTHLY_SALES) {
       reasons.push(`月間販売数が基準未満（${p.monthlySales} < ${CONFIG.MIN_MONTHLY_SALES}）`);
     }
-    if (!p.model) reasons.push("型番が分からず楽天で同じ商品を探せない");
+    if (!p.model && !p.jan) reasons.push("型番もJANも分からず楽天で同じ商品を探せない");
     return reasons;
   }
 
@@ -248,6 +260,43 @@
       cheapestAny: sorted[0] || null,
       matchedCount: matched.length,
     };
+  }
+
+  // JANで検索した結果から、商品名か商品説明に同じJANが書かれているものを採用する。
+  function pickRakutenMatchByJan(items, jan) {
+    const inStock = items.filter((it) => it.availability == null || Number(it.availability) === 1);
+    const sorted = inStock.slice().sort((a, b) => Number(a.itemPrice) - Number(b.itemPrice));
+    const matched = sorted.filter((it) =>
+      `${it.itemName || ""} ${it.itemCaption || ""}`.normalize("NFKC").includes(jan)
+    );
+    return { match: matched[0] || null, cheapestAny: sorted[0] || null, matchedCount: matched.length };
+  }
+
+  // 1セラー分の照合結果から、Watchlistに書き戻すquality_ratingの目安を出す。
+  // 照合できた（楽天で同じ商品が見つかった）件数が少なすぎるときは判断しない。
+  function suggestSellerRating(results) {
+    const checked = results.filter((r) => r.modelMatch === true);
+    const a = checked.filter((r) => r.category === "A").length;
+    const b = checked.filter((r) => r.category === "B").length;
+    let rating;
+    let why;
+    if (checked.length < 3) {
+      rating = null;
+      why = `楽天で同じ商品が見つかったのが${checked.length}件だけなので判断できない`;
+    } else if (a >= 2) {
+      rating = "S";
+      why = `A判定が${a}件ある`;
+    } else if (a === 1 || b >= 3) {
+      rating = "A";
+      why = a === 1 ? "A判定が1件ある" : `B判定が${b}件ある`;
+    } else if (b >= 1) {
+      rating = "B";
+      why = `A判定はなく、B判定が${b}件`;
+    } else {
+      rating = "C";
+      why = "A判定・B判定がない";
+    }
+    return { rating, why, checked: checked.length, a, b };
   }
 
   function sellerNameLooksSame(shopName, sellerName) {
@@ -342,6 +391,9 @@
     amazonSideHardFails,
     normalizeRakutenItems,
     pickRakutenMatch,
+    pickRakutenMatchByJan,
+    parseJan,
+    suggestSellerRating,
     sellerNameLooksSame,
     evaluate,
   };

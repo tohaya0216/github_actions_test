@@ -126,7 +126,7 @@ Nikon
     <p class="hint">外すと、ブランドが未確認の商品はすべてB止まりになります（analyze.pyと同じ慎重な扱い）。</p>
     <label for="maxRows">楽天で調べる最大件数</label>
     <input id="maxRows" type="number" step="10" value="100">
-    <p class="hint">楽天APIは1秒に1回のペースで呼ぶので、100件で約2分かかります。</p>
+    <p class="hint">楽天APIは1秒に1回のペースで呼びます。型番で見つからない商品はJANでもう1回探すため、100件で2〜4分かかります。</p>
     <button id="savePrefs">前提を保存</button>
   </section>
 
@@ -155,6 +155,7 @@ Nikon
   <section id="resultSection" hidden>
     <h2>5. 結果</h2>
     <div id="summary" class="summary"></div>
+    <p id="sellerRating" class="hint"></p>
     <button id="exportCsv">結果をCSVで保存</button>
     <div class="table-wrap">
       <table>
