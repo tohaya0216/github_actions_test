@@ -3,7 +3,7 @@
 (function (root) {
   // 画面に表示するバージョン。変更したら index.html の meta と script の ?v= も同じ値にする
   // （test_logic.js が食い違いを検出する）。
-  const TOOL_VERSION = "2026.09.25-7";
+  const TOOL_VERSION = "2026.09.25-8";
 
   const CONFIG = {
     DEFAULT_REFERRAL_FEE_RATE: 0.15,

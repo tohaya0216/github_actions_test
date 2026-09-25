@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="tool-version" content="2026.09.25-7">
+<meta name="tool-version" content="2026.09.25-8">
 <title>楽天照合ツール</title>
 <style>
   :root {
@@ -21,7 +21,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
     font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; line-height: 1.6; }
-  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  main { max-width: 1440px; margin: 0 auto; padding: 16px; }
   h1 { font-size: 1.4rem; margin: 8px 0 4px; }
   h2 { font-size: 1.05rem; margin: 0 0 8px; }
   p.lead { color: var(--muted); margin: 0 0 16px; }
@@ -51,6 +51,9 @@
   .cat-B { color: var(--b); background: var(--b-bg); }
   .cat-C { color: var(--c); background: var(--c-bg); }
   .reasons { color: var(--muted); font-size: .8rem; margin: 0; padding-left: 1.1em; }
+  td.reasons-cell { min-width: 340px; }
+  td.nowrap { white-space: nowrap; }
+  td.product-cell { min-width: 160px; max-width: 240px; }
   .summary { display: flex; gap: 12px; flex-wrap: wrap; margin: 4px 0 10px; }
   .summary span { padding: 2px 10px; border-radius: 6px; }
   a { color: inherit; }
@@ -213,7 +216,7 @@ Nikon
     <a href="https://developers.rakuten.com/" target="_blank" rel="noopener noreferrer">Supported by Rakuten Developers</a>
   </p>
 </main>
-<script src="logic.js?v=2026.09.25-7"></script>
-<script src="app.js?v=2026.09.25-7"></script>
+<script src="logic.js?v=2026.09.25-8"></script>
+<script src="app.js?v=2026.09.25-8"></script>
 </body>
 </html>

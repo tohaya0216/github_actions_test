@@ -343,8 +343,8 @@
       badge.textContent = r.category;
       cell(tr, badge);
       const amazonUrl = p.asin ? `https://www.amazon.co.jp/dp/${encodeURIComponent(p.asin)}` : "";
-      cell(tr, safeLink(amazonUrl, p.title || p.asin || "(商品名なし)"));
-      cell(tr, p.model || "");
+      cell(tr, safeLink(amazonUrl, p.title || p.asin || "(商品名なし)"), "product-cell");
+      cell(tr, p.model || "", "nowrap");
       cell(tr, yen(p.amazonPrice), "num");
       if (r.rakutenItem) {
         const wrap = document.createElement("div");
@@ -375,7 +375,7 @@
         li.textContent = reason;
         ul.appendChild(li);
       });
-      cell(tr, ul);
+      cell(tr, ul, "reasons-cell");
       body.appendChild(tr);
     }
     $("resultSection").hidden = false;
