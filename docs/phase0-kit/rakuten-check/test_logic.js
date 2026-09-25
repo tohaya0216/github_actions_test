@@ -230,4 +230,33 @@ test("容量・単位・寸法を型番と取り違えない", () => {
   assert.strictEqual(L.extractModelFromTitle("マキタ インパクトドライバ TD173DRGX 18V"), "TD173DRGX");
 });
 
+test("付属品・部品を本体と取り違えない（2026-09-25の実データ試験の再現）", () => {
+  const f91 = [
+    { itemName: "F-91W 交換バンド 互換品", itemPrice: 448, availability: 1 },
+    { itemName: "CASIO F-91W-1JH デジタル腕時計", itemPrice: 1980, availability: 1 },
+  ];
+  const minF = L.minRakutenPrice(2500);
+  assert.strictEqual(minF, 750);
+  assert.strictEqual(L.pickRakutenMatch(f91, "F-91W", minF).match.itemPrice, 1980);
+
+  const ds1 = [
+    { itemName: "DS-1 対応 パッチケーブル", itemPrice: 500, availability: 1 },
+    { itemName: "BOSS DS-1 Distortion ディストーション", itemPrice: 7480, availability: 1 },
+  ];
+  assert.strictEqual(L.pickRakutenMatch(ds1, "DS-1", L.minRakutenPrice(8000)).match.itemPrice, 7480);
+
+  const jnl = [{ itemName: "サーモス JNL-506 専用 パッキンセット", itemPrice: 880, availability: 1 }];
+  assert.strictEqual(L.pickRakutenMatch(jnl, "JNL-506", L.minRakutenPrice(3000)).match, null);
+
+  assert.ok(L.looksLikeAccessory("F-91W 交換バンド"));
+  assert.ok(!L.looksLikeAccessory("CASIO F-91W-1JH"));
+});
+
+test("楽天がAmazonの半額未満なら警告してA判定にしない", () => {
+  const cheap = Object.assign({}, rakutenOD, { itemPrice: 3000 });
+  const ev = L.evaluate(ps[0], cheap, opts);
+  assert.strictEqual(ev.category, "B");
+  assert.ok(ev.reasons.some((r) => r.includes("半額未満")));
+});
+
 console.log("すべて成功");

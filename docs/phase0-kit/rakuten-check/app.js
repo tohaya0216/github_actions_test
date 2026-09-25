@@ -80,7 +80,7 @@
     }
   }
 
-  async function searchRakuten(keyword) {
+  async function searchRakuten(keyword, minPrice) {
     const appId = $("appId").value.trim();
     const accessKey = $("accessKey").value.trim();
     if (!appId || !accessKey) throw new Error("アプリケーションIDとアクセスキーを入力してください");
@@ -91,6 +91,7 @@
       sort: "+itemPrice",
       availability: "1",
       hits: "30",
+      ...(minPrice ? { minPrice: String(minPrice) } : {}),
       format: "json",
       formatVersion: "2",
     });
@@ -179,13 +180,13 @@
     let checkedProducts = 0;
     let lastCallAt = 0;
 
-    async function throttledSearch(keyword, i) {
+    async function throttledSearch(keyword, i, minPrice) {
       const wait = REQUEST_INTERVAL_MS - (Date.now() - lastCallAt);
       if (wait > 0) await sleep(wait);
       setStatus($("runStatus"), `照合中… ${i + 1}/${products.length}件目（楽天API ${apiCalls + 1}回目）`);
       lastCallAt = Date.now();
       apiCalls++;
-      return searchRakuten(keyword);
+      return searchRakuten(keyword, minPrice);
     }
 
     for (let i = 0; i < products.length; i++) {
@@ -208,16 +209,18 @@
       }
       checkedProducts++;
 
-      // まず型番で探し、見つからなければJANで探し直す
+      // まず型番で探し、見つからなければJANで探し直す。
+      // Amazon価格の30%未満は楽天側で最初から除く（安い付属品で検索結果が埋まるのを防ぐ）
+      const minPrice = L.minRakutenPrice(p.amazonPrice);
       let found = { match: null, cheapestAny: null, matchedCount: 0 };
       let matchedBy = null;
       try {
         if (p.model) {
-          found = L.pickRakutenMatch(await throttledSearch(p.model, i), p.model);
+          found = L.pickRakutenMatch(await throttledSearch(p.model, i, minPrice), p.model, minPrice);
           if (found.match) matchedBy = "型番";
         }
         if (!found.match && p.jan) {
-          const byJan = L.pickRakutenMatchByJan(await throttledSearch(p.jan, i), p.jan);
+          const byJan = L.pickRakutenMatchByJan(await throttledSearch(p.jan, i, minPrice), p.jan, minPrice);
           if (byJan.match) {
             found = byJan;
             matchedBy = "JAN";

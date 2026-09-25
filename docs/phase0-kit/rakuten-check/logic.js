@@ -12,7 +12,37 @@
     // 出品者数の急増判定：現在値が90日平均の1.5倍以上、かつ3人以上増えている
     SPIKE_RATIO: 1.5,
     SPIKE_MIN_INCREASE: 3,
+    // 楽天で探すときの価格の下限（Amazon価格に対する比率）。型番の入った安い付属品・部品が
+    // 検索結果の上位を埋めて本体が見つからなくなるのを防ぐ（2026-09-25、実データの試験で発覚）。
+    MIN_RAKUTEN_PRICE_RATIO: 0.3,
+    // 楽天の価格がAmazonのこの比率未満なら、別商品・付属品・セット数違いを疑ってA判定にしない。
+    SUSPICIOUS_PRICE_RATIO: 0.5,
   };
+
+  // 商品名にこれらを含むものは、型番が一致しても本体ではなく付属品・部品・中古とみなす。
+  const ACCESSORY_WORDS = [
+    "互換", "交換", "替え", "替芯", "替刃", "部品", "パーツ", "専用", "対応",
+    "バンド", "ベルト", "パッキン", "フィルム", "保護", "カバー", "ケース",
+    "中古", "ジャンク", "訳あり", "アウトレット",
+  ];
+
+  function looksLikeAccessory(itemName) {
+    const name = String(itemName || "").normalize("NFKC");
+    return ACCESSORY_WORDS.some((w) => name.includes(w));
+  }
+
+  // 楽天の結果のうち、候補にしてよいもの（在庫あり・価格が下限以上・付属品らしくない）を安い順に並べる。
+  function usableItems(items, minPrice) {
+    return items
+      .filter((it) => it.availability == null || Number(it.availability) === 1)
+      .filter((it) => !minPrice || Number(it.itemPrice) >= minPrice)
+      .filter((it) => !looksLikeAccessory(it.itemName))
+      .sort((a, b) => Number(a.itemPrice) - Number(b.itemPrice));
+  }
+
+  function minRakutenPrice(amazonPrice) {
+    return amazonPrice ? Math.floor(amazonPrice * CONFIG.MIN_RAKUTEN_PRICE_RATIO) : 0;
+  }
 
   // 商品説明にこれらが含まれていたら「転売お断り」の可能性として警告する。
   // 「転売品ではありません」のような無関係な用例も拾うため、C判定にはせずA止めにする。
@@ -270,10 +300,9 @@
     return (name) => re.test(String(name || "").normalize("NFKC").toUpperCase());
   }
 
-  function pickRakutenMatch(items, model) {
+  function pickRakutenMatch(items, model, minPrice) {
     const isMatch = modelMatcher(model);
-    const inStock = items.filter((it) => it.availability == null || Number(it.availability) === 1);
-    const sorted = inStock.slice().sort((a, b) => Number(a.itemPrice) - Number(b.itemPrice));
+    const sorted = usableItems(items, minPrice);
     const matched = sorted.filter((it) => isMatch(it.itemName));
     return {
       match: matched[0] || null,
@@ -283,9 +312,8 @@
   }
 
   // JANで検索した結果から、商品名か商品説明に同じJANが書かれているものを採用する。
-  function pickRakutenMatchByJan(items, jan) {
-    const inStock = items.filter((it) => it.availability == null || Number(it.availability) === 1);
-    const sorted = inStock.slice().sort((a, b) => Number(a.itemPrice) - Number(b.itemPrice));
+  function pickRakutenMatchByJan(items, jan, minPrice) {
+    const sorted = usableItems(items, minPrice);
     const matched = sorted.filter((it) =>
       `${it.itemName || ""} ${it.itemCaption || ""}`.normalize("NFKC").includes(jan)
     );
@@ -418,6 +446,9 @@
     const resaleHit = RESALE_KEYWORDS.find((k) => caption.includes(k));
     if (resaleHit) warnings.push(`楽天の商品説明に「${resaleHit}」の記載あり（転売お断りでないか要確認）`);
     if (Number(rakutenItem.postageFlag) === 1) warnings.push("楽天側は送料別（送料分だけ利益が減る）");
+    if (rakutenPrice < p.amazonPrice * CONFIG.SUSPICIOUS_PRICE_RATIO) {
+      warnings.push("楽天の価格がAmazonの半額未満（別の商品・付属品・セット数違いの可能性が高い。必ず目で確認）");
+    }
     if (opts.sellerName && sellerNameLooksSame(rakutenItem.shopName, opts.sellerName)) {
       warnings.push(`楽天の店名「${rakutenItem.shopName}」がAmazonのセラー名と似ている（価格同期の可能性）`);
     }
@@ -469,6 +500,8 @@
     normalizeRakutenItems,
     pickRakutenMatch,
     pickRakutenMatchByJan,
+    looksLikeAccessory,
+    minRakutenPrice,
     parseJan,
     suggestSellerRating,
     aggregateResults,
