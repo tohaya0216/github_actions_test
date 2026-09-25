@@ -301,4 +301,38 @@ test("本体の型番入りアダプター等を除き、Amazon側も同じ種�
   assert.ok(L.looksLikeAccessory("【中古】BOSS DS-1", "BOSS DS-1 中古"));
 });
 
+test("別メーカーの同じ型番を避け、ブランド名が一致する商品を選ぶ", () => {
+  const p = { brand: "BOSS", title: "BOSS ディストーション DS-1 エフェクター", model: "DS-1" };
+  const brands = L.brandCandidates(p);
+  assert.deepStrictEqual(brands, ["BOSS"]);
+  const opener = { itemName: "サンカ ドラム缶オープナー DS-1", itemPrice: 2440, availability: 1 };
+  const real = { itemName: "BOSS DS-1 Distortion", itemPrice: 7480, availability: 1 };
+  const r = L.pickRakutenMatch([opener, real], "DS-1", 2400, p.title, brands);
+  assert.strictEqual(r.match.itemPrice, 7480);
+  assert.strictEqual(r.brandVerified, true);
+
+  const onlyOpener = L.pickRakutenMatch([opener], "DS-1", 2400, p.title, brands);
+  assert.strictEqual(onlyOpener.match.itemPrice, 2440);
+  assert.strictEqual(onlyOpener.brandVerified, false);
+  const ev = L.applyMatchWarnings({ category: "A", reasons: ["基本基準・-20%ストレステストともに通過"] }, onlyOpener);
+  assert.strictEqual(ev.category, "B");
+  assert.ok(ev.reasons[0].includes("別メーカー"));
+});
+
+test("ブランド名は英語表記と商品名先頭のカタカナ表記の両方を使う", () => {
+  assert.deepStrictEqual(
+    L.brandCandidates({ brand: "THERMOS", title: "サーモス 水筒 真空断熱ケータイマグ 500ml JNL-506" }),
+    ["THERMOS", "サーモス"]
+  );
+  assert.deepStrictEqual(
+    L.brandCandidates({ brand: "Makita", title: "マキタ(Makita) 充電式インパクトドライバ" }),
+    ["MAKITA", "マキタ"]
+  );
+  assert.deepStrictEqual(L.brandCandidates({ brand: "ノーブランド", title: "【Amazon.co.jp限定】収納ボックス" }), []);
+  const thermos = { itemName: "サーモス JNL-506 ケータイマグ", itemPrice: 2800, availability: 1 };
+  const r = L.pickRakutenMatch([thermos], "JNL-506", 900, "サーモス 水筒 JNL-506",
+    L.brandCandidates({ brand: "THERMOS", title: "サーモス 水筒 JNL-506" }));
+  assert.strictEqual(r.brandVerified, true);
+});
+
 console.log("すべて成功");

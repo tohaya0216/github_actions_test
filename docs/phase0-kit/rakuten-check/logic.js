@@ -3,7 +3,7 @@
 (function (root) {
   // 画面に表示するバージョン。変更したら index.html の meta と script の ?v= も同じ値にする
   // （test_logic.js が食い違いを検出する）。
-  const TOOL_VERSION = "2026.09.25-10";
+  const TOOL_VERSION = "2026.09.25-11";
 
   const CONFIG = {
     DEFAULT_REFERRAL_FEE_RATE: 0.15,
@@ -340,15 +340,49 @@
     return (name) => re.test(String(name || "").normalize("NFKC").toUpperCase());
   }
 
-  function pickRakutenMatch(items, model, minPrice, amazonTitle) {
+  // 別メーカーが同じ型番を使っていることがある（例：BOSS DS-1 と サンカ ドラム缶オープナー DS-1。
+  // 2026-09-25の実データで発覚）。KeepaのBrand列と、Amazonの商品名の先頭の語（「サーモス」
+  // 「マキタ(Makita)」など）をブランド名の候補にし、楽天の商品名に含まれるかを見る。
+  function brandCandidates(p) {
+    const out = new Set();
+    const add = (s) => {
+      const n = normalizeForMatch(s);
+      if (n.length >= 2 && !/AMAZON|限定|GENERIC|ノーブランド/.test(n)) out.add(n);
+    };
+    const brand = String(p.brand || "").normalize("NFKC").trim();
+    // ブランドが不明・ノーブランドなら、商品名の先頭の語もブランドとは限らないので使わない
+    if (!brand || GENERIC_BRANDS.includes(brand.toLowerCase())) return [];
+    add(brand);
+    const firstChunk = String(p.title || "").normalize("NFKC").trim().split(/\s+/)[0] || "";
+    firstChunk.split(/[()（）\[\]【】「」]/).forEach(add);
+    return [...out];
+  }
+
+  // 型番が一致したもののうち、ブランド名も商品名にあるものを優先する。
+  // brandVerified: true=ブランドも一致 / false=型番だけ一致（別メーカーの疑い）/ null=ブランド不明で確認できない
+  function pickRakutenMatch(items, model, minPrice, amazonTitle, brands) {
     const isMatch = modelMatcher(model);
     const sorted = usableItems(items, minPrice, amazonTitle);
     const matched = sorted.filter((it) => isMatch(it.itemName));
+    const brandList = brands || [];
+    const withBrand = brandList.length
+      ? matched.filter((it) => brandList.some((b) => normalizeForMatch(it.itemName).includes(b)))
+      : [];
+    const match = withBrand[0] || matched[0] || null;
     return {
-      match: matched[0] || null,
+      match,
       cheapestAny: sorted[0] || null,
       matchedCount: matched.length,
+      brandVerified: !match || !brandList.length ? null : withBrand.length > 0,
     };
+  }
+
+  // 照合のしかたから分かる注意点を判定結果に足す（A判定を取り消してBにする）。
+  function applyMatchWarnings(ev, found) {
+    if (found.brandVerified !== false) return ev;
+    const warning = "楽天の商品名にブランド名がない（別メーカーの同じ型番の可能性。必ず目で確認）";
+    const reasons = ev.category === "B" || ev.category === "C" ? [warning].concat(ev.reasons) : [warning];
+    return Object.assign({}, ev, { category: ev.category === "A" ? "B" : ev.category, reasons });
   }
 
   // JANで検索した結果から、商品名か商品説明に同じJANが書かれているものを採用する。
@@ -550,6 +584,8 @@
     minRakutenPrice,
     maxRakutenPrice,
     buildSearchKeywords,
+    brandCandidates,
+    applyMatchWarnings,
     parseJan,
     suggestSellerRating,
     aggregateResults,

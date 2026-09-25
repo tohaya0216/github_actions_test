@@ -214,11 +214,14 @@
       // 価格はAmazon価格の30%〜100%の範囲だけを見る（付属品と、仕入れても利益が出ない高値を除く）。
       const minPrice = L.minRakutenPrice(p.amazonPrice);
       const maxPrice = L.maxRakutenPrice(p.amazonPrice);
+      const brands = L.brandCandidates(p);
       let found = { match: null, cheapestAny: null, matchedCount: 0 };
       let matchedBy = null;
       try {
         for (const keyword of L.buildSearchKeywords(p)) {
-          const r = L.pickRakutenMatch(await throttledSearch(keyword, i, minPrice, maxPrice), p.model, minPrice, p.title);
+          const r = L.pickRakutenMatch(
+            await throttledSearch(keyword, i, minPrice, maxPrice), p.model, minPrice, p.title, brands
+          );
           if (r.match) {
             found = r;
             matchedBy = "型番";
@@ -256,7 +259,7 @@
         });
         continue;
       }
-      const ev = L.evaluate(p, match, prefs);
+      const ev = L.applyMatchWarnings(L.evaluate(p, match, prefs), found);
       results.push(Object.assign({ product: p, rakutenItem: match, modelMatch: true, matchedCount, matchedBy }, ev));
     }
 
