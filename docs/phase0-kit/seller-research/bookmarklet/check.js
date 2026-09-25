@@ -17,7 +17,7 @@
 // 注意：browser-extension/content.js と同様、実機でのAmazon動作は未確認。
 
 (async function () {
-  var VERSION = "0.5.0";
+  var VERSION = "0.5.2";
   var VENDOR_KEYWORDS = [
     "専門店", "代理店", "正規販売店", "正規取扱店",
     "オフィシャルショップ", "オフィシャルストア",
@@ -245,7 +245,9 @@
   var toMarkSeen = [];
   for (var i = 0; i < candidates.length; i++) {
     var c = candidates[i];
-    if (seen[c.id] || seenInThisRun[c.id]) continue;
+    // 「評価数不明」で記録済みでも、今回評価数が読み取れたなら判定し直す
+    var retryUnknown = seen[c.id] === "unknown_rating" && c.rating != null;
+    if ((seen[c.id] && !retryUnknown) || seenInThisRun[c.id]) continue;
     seenInThisRun[c.id] = true;
     if (c.rating == null) {
       toMarkSeen.push({ seller_id: c.id, status: "unknown_rating" });

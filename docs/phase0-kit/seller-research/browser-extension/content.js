@@ -16,7 +16,7 @@
   // manifest.jsonのversionと手動で合わせる。画面上のステータス表示にも出すことで、
   // Kiwi Browser等で「再読み込みが本当に反映されたか」を拡張機能管理画面を
   // 開かずにその場で確認できるようにする（2026-09-23追加）。
-  const VERSION = "0.5.1";
+  const VERSION = "0.5.2";
   const DEFAULT_SETTINGS = { minRating: 50, maxRating: 400 };
   const LOG_PREFIX = "[seller-watch]";
 
@@ -479,7 +479,12 @@
     const seenInThisScan = new Set();
 
     for (const c of candidates) {
-      if (seenSellers[c.sellerId] || seenInThisScan.has(c.sellerId)) {
+      // 「評価数不明」で記録済みのセラーは、今回評価数が読み取れたなら判定し直す。
+      // 「他の出品を見る」一覧には評価数が出ないことが多く、そこで一度記録されると
+      // 評価数が見える出品者ページを開いても二度と判定されなくなっていた（2026-09-25修正）。
+      const prev = seenSellers[c.sellerId];
+      const retryUnknown = prev && prev.status === "unknown_rating" && c.ratingCount != null;
+      if ((prev && !retryUnknown) || seenInThisScan.has(c.sellerId)) {
         alreadySeenCount++;
         continue;
       }

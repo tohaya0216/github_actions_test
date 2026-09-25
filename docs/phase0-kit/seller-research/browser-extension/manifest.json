@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "電脳せどり セラーウォッチ検出（個人用）",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Amazon商品ページ・出品者ページを開いた際に、評価数が条件レンジ内の未チェックセラーを検出し、監視リストへの追加を確認する個人用ツール。Amazonへの追加通信は一切行わず、現在表示中のページの内容のみを読み取る。判定履歴・監視リストはAirtable経由で保存し、複数端末で共有する。",
   "permissions": ["storage"],
   "host_permissions": ["https://www.amazon.co.jp/*", "https://api.airtable.com/*"],
