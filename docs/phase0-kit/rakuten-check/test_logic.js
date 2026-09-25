@@ -221,4 +221,13 @@ test("Amazonの手数料に消費税を上乗せする", () => {
   assert.strictEqual(ev.feeTaxRate, 0.1);
 });
 
+test("容量・単位・寸法を型番と取り違えない", () => {
+  assert.strictEqual(L.extractModelFromTitle("ステンレスボトル 500ml 保温"), null);
+  assert.strictEqual(L.extractModelFromTitle("モバイルバッテリー 10000mAh 大容量"), null);
+  assert.strictEqual(L.extractModelFromTitle("ラグ 130x190cm"), null);
+  assert.strictEqual(L.extractModelFromTitle("象印 ステンレスマグ 360ml SM-ZB36-BA"), "SM-ZB36-BA");
+  assert.strictEqual(L.extractModelFromTitle("タイガー 水筒 MMZ-K060 0.6L"), "MMZ-K060");
+  assert.strictEqual(L.extractModelFromTitle("マキタ インパクトドライバ TD173DRGX 18V"), "TD173DRGX");
+});
+
 console.log("すべて成功");

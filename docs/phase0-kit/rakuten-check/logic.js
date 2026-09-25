@@ -169,9 +169,14 @@
       .normalize("NFKC")
       .match(/[A-Za-z0-9][A-Za-z0-9\-/.]{3,}/g);
     if (!tokens) return null;
+    // 「500ml」「1000mAh」「30x40」のような容量・単位・寸法は型番ではない。これを型番として
+    // 楽天を検索すると、別の商品を「一致」と判断してしまうので除く（取り違えるより見送る方が安全）。
+    const looksLikeUnitOrSize = (t) =>
+      /^\d+(\.\d+)?[a-z]{1,3}$/i.test(t) || /^\d+(\.\d+)?[x×]\d+/i.test(t);
     const candidates = tokens
       .map((t) => t.replace(/[\-/.]+$/, ""))
-      .filter((t) => /[A-Za-z]/.test(t) && /[0-9]/.test(t) && t.length >= 4);
+      .filter((t) => /[A-Za-z]/.test(t) && /[0-9]/.test(t) && t.length >= 4)
+      .filter((t) => !looksLikeUnitOrSize(t));
     if (!candidates.length) return null;
     return candidates.sort((a, b) => b.length - a.length)[0];
   }
