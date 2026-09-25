@@ -192,4 +192,26 @@ test("複数セラーの結果を集計し、15-4の目安で判断する", () =
   assert.ok(L.aggregateResults(none).verdict.startsWith("厳しい"));
 });
 
+test("小口出品の基本成約料を利益から引く", () => {
+  const ev = L.evaluate(ps[0], rakutenOD, Object.assign({}, opts, { perItemFee: 100 }));
+  assert.strictEqual(Math.round(ev.profit), 2048 - 100);
+  assert.strictEqual(ev.perItemFee, 100);
+});
+
+test("作業時間から1時間あたりの発見件数と見込み利益を出す", () => {
+  const rows = [
+    { seller_name: "X", category: "A", rakuten_matched: "yes", profit: "1500", research_minutes: "30" },
+    { seller_name: "X", category: "A", rakuten_matched: "yes", profit: "2500", research_minutes: "" },
+    { seller_name: "X", category: "C", rakuten_matched: "yes", profit: "-100", research_minutes: "" },
+    { seller_name: "Y", category: "B", rakuten_matched: "yes", profit: "900", research_minutes: "30" },
+  ];
+  const agg = L.aggregateResults(rows);
+  assert.strictEqual(agg.overall.minutes, 60);
+  assert.strictEqual(agg.overall.aPerHour, 2);
+  assert.strictEqual(agg.overall.profitPerHour, 4000);
+  const y = agg.sellers.find((s) => s.name === "Y");
+  assert.strictEqual(y.aPerHour, 0);
+  assert.strictEqual(L.aggregateResults([{ seller_name: "Z", category: "A", rakuten_matched: "yes" }]).overall.aPerHour, null);
+});
+
 console.log("すべて成功");

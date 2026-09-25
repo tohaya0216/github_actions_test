@@ -56,6 +56,7 @@
       sellerName: $("sellerName").value.trim(),
       extraPointPct: parseFloat($("extraPoint").value) || 0,
       fallbackFbaFee: parseFloat($("fallbackFba").value) || 0,
+      perItemFee: parseFloat($("perItemFee").value) || 0,
       famousBrands: $("famousBrands").value.split("\n").map((s) => s.trim()).filter(Boolean),
       treatUnlistedBrandAsSafe: $("unlistedSafe").checked,
       maxRows: parseInt($("maxRows").value, 10) || 100,
@@ -70,6 +71,7 @@
       const p = s.prefs;
       if (p.extraPointPct != null) $("extraPoint").value = p.extraPointPct;
       if (p.fallbackFbaFee != null) $("fallbackFba").value = p.fallbackFbaFee;
+      if (p.perItemFee != null) $("perItemFee").value = p.perItemFee;
       if (p.famousBrands) $("famousBrands").value = p.famousBrands.join("\n");
       if (p.treatUnlistedBrandAsSafe != null) $("unlistedSafe").checked = p.treatUnlistedBrandAsSafe;
       if (p.maxRows) $("maxRows").value = p.maxRows;
@@ -371,13 +373,16 @@
     const sellerName = $("sellerName").value.trim();
     const checkedAt = new Date().toISOString().slice(0, 10);
     const headers = [
-      "seller_name", "checked_at", "category", "rakuten_matched", "matched_by", "asin", "product_name", "model", "amazon_price", "rakuten_price", "rakuten_shop",
-      "rakuten_url", "point_pct", "effective_cost", "referral_fee_rate", "fba_fee", "profit",
+      "seller_name", "checked_at", "research_minutes", "category", "rakuten_matched", "matched_by", "asin", "product_name", "model", "amazon_price", "rakuten_price", "rakuten_shop",
+      "rakuten_url", "point_pct", "effective_cost", "referral_fee_rate", "fba_fee", "per_item_fee", "profit",
       "profit_margin", "stress20_profit", "monthly_sales", "seller_count", "reasons",
     ];
-    const rows = results.map((r) => ({
+    const minutes = $("researchMinutes").value.trim();
+    // 作業時間はCSV全体で1つの値なので、集計で二重に数えないよう先頭の行にだけ入れる
+    const rows = results.map((r, idx) => ({
       seller_name: sellerName,
       checked_at: checkedAt,
+      research_minutes: idx === 0 ? minutes : "",
       category: r.category,
       rakuten_matched: r.modelMatch === true ? "yes" : "no",
       matched_by: r.matchedBy || "",
@@ -392,6 +397,7 @@
       effective_cost: r.effectiveCost != null ? Math.round(r.effectiveCost) : "",
       referral_fee_rate: r.referral ?? "",
       fba_fee: r.fba ?? "",
+      per_item_fee: r.perItemFee ?? "",
       profit: r.profit != null ? Math.round(r.profit) : "",
       profit_margin: r.margin != null ? r.margin.toFixed(3) : "",
       stress20_profit: r.stress20 != null ? Math.round(r.stress20) : "",
@@ -480,10 +486,17 @@
       const tr = document.createElement("tr");
       [s.name, s.total, s.matched, s.A, s.B, s.C].forEach((v, idx) => cell(tr, v, idx ? "num" : ""));
       cell(tr, pct(s.passRate), "num");
+      cell(tr, s.minutes ? `${s.minutes}分` : "-", "num");
+      cell(tr, s.aPerHour == null ? "-" : s.aPerHour.toFixed(1), "num");
+      cell(tr, s.profitPerHour == null ? "-" : yen(s.profitPerHour), "num");
       if (s.name === "合計") tr.style.fontWeight = "700";
       body.appendChild(tr);
     }
     let verdict = `判断の目安：${agg.verdict}（通過率 ${pct(agg.overall.passRate)}）`;
+    if (agg.overall.profitPerHour != null) {
+      verdict += `。作業1時間あたりの見込み利益は${yen(agg.overall.profitPerHour)}` +
+        "（15-5の例：2,000円/時なら副業として成立、857円/時だと魅力が薄い。1個ずつ売れた場合の見込みで、月の利益ではない）";
+    }
     if (skipped.length) verdict += `。このツールの結果CSVではないため読み飛ばしたファイル：${skipped.join("、")}`;
     setStatus($("aggVerdict"), verdict, skipped.length > 0);
     $("aggResult").hidden = false;

@@ -97,6 +97,16 @@
           カード規約でせどり仕入れへの使用が禁止されているため含めない（dennou-sedori-tips.md 9-4）。</p>
       </div>
       <div>
+        <label for="perItemFee">1個売れるごとの基本成約料（円）</label>
+        <input id="perItemFee" type="number" step="10" value="100">
+        <p class="hint">小口出品は100円（税抜）。大口出品に切り替えたら0にする。</p>
+      </div>
+      <div>
+        <label for="researchMinutes">このCSVの作業時間（分・任意）</label>
+        <input id="researchMinutes" type="number" step="5" placeholder="例：30">
+        <p class="hint">Keepaでの準備から確認までにかかった時間。集計で「1時間あたりの成果」を出すのに使います。</p>
+      </div>
+      <div>
         <label for="fallbackFba">FBA手数料が無いときの仮の値（円）</label>
         <input id="fallbackFba" type="number" step="10" value="500">
         <p class="hint">CSVにFBA手数料の列があればそちらを使います。</p>
@@ -181,11 +191,13 @@ Nikon
         <table>
           <thead><tr>
             <th>セラー</th><th>全商品</th><th>楽天で照合</th><th>A</th><th>B</th><th>C</th><th>通過率</th>
+            <th>作業時間</th><th>A/時</th><th>見込み利益/時</th>
           </tr></thead>
           <tbody id="aggBody"></tbody>
         </table>
       </div>
-      <p class="hint">通過率＝A判定 ÷ 楽天で同じ商品が見つかった件数。Amazon側の情報だけで見送った商品は分母に入れません。</p>
+      <p class="hint">通過率＝A判定 ÷ 楽天で同じ商品が見つかった件数。Amazon側の情報だけで見送った商品は分母に入れません。
+        「A/時」「見込み利益/時」は、作業時間を入れたCSVだけで計算します（dennou-sedori-tips.md 15-5の先行指標）。</p>
     </div>
   </section>
 </main>

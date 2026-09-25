@@ -321,21 +321,30 @@
   // 15-4の目安（15%前後=有望／3%前後=効率化が前提／0〜1%=手法を再考）の中間で区切る。
   function aggregateResults(rows) {
     const bySeller = new Map();
-    const blank = () => ({ total: 0, matched: 0, A: 0, B: 0, C: 0 });
+    const blank = () => ({ total: 0, matched: 0, A: 0, B: 0, C: 0, minutes: 0, profitA: 0 });
     const overall = blank();
     for (const r of rows) {
       const name = r.seller_name || "（セラー名なし）";
       if (!bySeller.has(name)) bySeller.set(name, blank());
+      const minutes = parseNumber(r.research_minutes);
+      const profit = parseNumber(r.profit);
       for (const agg of [bySeller.get(name), overall]) {
         agg.total++;
+        if (minutes != null) agg.minutes += minutes;
+        if (r.rakuten_matched === "yes" && r.category === "A" && profit != null) agg.profitA += profit;
         if (r.rakuten_matched === "yes") {
           agg.matched++;
           if (agg[r.category] != null) agg[r.category]++;
         }
       }
     }
+    // 15-5の先行指標：作業1時間あたりに見つかったA判定の件数と、その見込み利益の合計
     const withRate = (agg) =>
-      Object.assign(agg, { passRate: agg.matched ? agg.A / agg.matched : null });
+      Object.assign(agg, {
+        passRate: agg.matched ? agg.A / agg.matched : null,
+        aPerHour: agg.minutes ? agg.A / (agg.minutes / 60) : null,
+        profitPerHour: agg.minutes ? agg.profitA / (agg.minutes / 60) : null,
+      });
     const sellers = [...bySeller.entries()].map(([name, agg]) =>
       Object.assign({ name }, withRate(agg))
     );
@@ -369,7 +378,9 @@
     const fbaFeeKnown = p.fbaFee != null;
     const fba = fbaFeeKnown ? p.fbaFee : Number(opts.fallbackFbaFee) || 0;
 
-    const profitAt = (price) => price - effectiveCost - price * referral - fba;
+    // 小口出品は1個売れるごとに基本成約料（100円）がかかる。大口出品なら0。
+    const perItemFee = Number(opts.perItemFee) || 0;
+    const profitAt = (price) => price - effectiveCost - price * referral - fba - perItemFee;
     const profit = profitAt(p.amazonPrice);
     const margin = p.amazonPrice ? profit / p.amazonPrice : 0;
     const stress20 = profitAt(p.amazonPrice * (1 - CONFIG.STRESS_DROP_2));
@@ -426,6 +437,7 @@
       effectiveCost,
       referral,
       fba,
+      perItemFee,
       profit,
       margin,
       stress20,
