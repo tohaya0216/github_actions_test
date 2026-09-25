@@ -160,6 +160,7 @@ Keepaでの商品確認に回す。
 |---|---|
 | `seller-watchlist-template.csv` | ①セラーの定点観測リスト |
 | `seller-products-template.csv` | ②Amazon側で確認した商品リスト（型番・価格・出品者数等） |
+| `astra-prompt-keepa-seller-check.md` | Keepaの出品者ページで、手法に合うセラー（FBA利用・国内商品）か無在庫の海外輸入転売型かを見分けるのをAstraに頼むプロンプト |
 | `astra-prompt-seller-screening.md` | ②の前の足切り（メーカー・代理店直販の見極め）をAstraに依頼するプロンプト |
 | `astra-prompt-rakuten-check.md` | ③楽天側確認をAstraに依頼するプロンプト |
 | `merge_seller_research.py` | ④②③の結果を自動突合し、`analyze.py`用CSVに整形するスクリプト |
