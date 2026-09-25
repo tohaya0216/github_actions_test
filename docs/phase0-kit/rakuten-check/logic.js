@@ -3,7 +3,7 @@
 (function (root) {
   // 画面に表示するバージョン。変更したら index.html の meta と script の ?v= も同じ値にする
   // （test_logic.js が食い違いを検出する）。
-  const TOOL_VERSION = "2026.09.25-8";
+  const TOOL_VERSION = "2026.09.25-9";
 
   const CONFIG = {
     DEFAULT_REFERRAL_FEE_RATE: 0.15,
@@ -74,6 +74,10 @@
   // 商品説明にこれらが含まれていたら「転売お断り」の可能性として警告する。
   // 「転売品ではありません」のような無関係な用例も拾うため、C判定にはせずA止めにする。
   const RESALE_KEYWORDS = ["転売", "業者様", "同業者", "営利目的"];
+
+  // 海外からの発送・並行輸入品は、真贋調査・PSE・到着までの日数のリスクが高い。
+  // 本体として一致していても、仕入れる前に目で確かめるためA止めにする。
+  const IMPORT_KEYWORDS = ["並行輸入", "海外輸入", "輸入品", "海外発送", "海外から発送", "海外倉庫", "取り寄せ"];
 
   function parseCSV(text) {
     const rows = [];
@@ -472,6 +476,11 @@
     const caption = String(rakutenItem.itemCaption || "");
     const resaleHit = RESALE_KEYWORDS.find((k) => caption.includes(k));
     if (resaleHit) warnings.push(`楽天の商品説明に「${resaleHit}」の記載あり（転売お断りでないか要確認）`);
+    const itemText = `${rakutenItem.itemName || ""} ${caption}`.normalize("NFKC");
+    const importHit = IMPORT_KEYWORDS.find((k) => itemText.includes(k));
+    if (importHit) {
+      warnings.push(`楽天の商品に「${importHit}」の記載あり（並行輸入品・海外発送の可能性。真贋調査・PSE・到着日数に注意）`);
+    }
     if (Number(rakutenItem.postageFlag) === 1) warnings.push("楽天側は送料別（送料分だけ利益が減る）");
     if (rakutenPrice < p.amazonPrice * CONFIG.SUSPICIOUS_PRICE_RATIO) {
       warnings.push("楽天の価格がAmazonの半額未満（別の商品・付属品・セット数違いの可能性が高い。必ず目で確認）");

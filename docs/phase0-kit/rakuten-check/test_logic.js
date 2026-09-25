@@ -275,4 +275,11 @@ test("楽天で探す語はブランド名＋型番、次に型番だけ", () =>
   assert.strictEqual(L.maxRakutenPrice(8000), 8000);
 });
 
+test("並行輸入・海外発送の商品はA判定にしない", () => {
+  const item = Object.assign({}, rakutenOD, { itemCaption: "※海外倉庫からのお取り寄せ商品です。並行輸入品。" });
+  const ev = L.evaluate(ps[0], item, opts);
+  assert.strictEqual(ev.category, "B");
+  assert.ok(ev.reasons.some((r) => r.includes("並行輸入")));
+});
+
 console.log("すべて成功");
