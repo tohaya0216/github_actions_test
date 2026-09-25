@@ -236,7 +236,7 @@
           category: "C",
           reasons: [
             cheapestAny
-              ? "楽天で型番が一致する在庫ありの商品が見つからない（似た別商品のみ）"
+              ? "楽天で同じ商品（型番・JANが一致）が在庫ありで見つからない（似た別商品のみ）"
               : "楽天で在庫ありの商品が見つからない",
           ],
           rakutenItem: cheapestAny,
@@ -340,7 +340,7 @@
         const shop = document.createElement("div");
         shop.className = "hint";
         shop.textContent = r.modelMatch === false
-          ? "型番不一致（参考価格）"
+          ? "同じ商品ではない（参考価格）"
           : `${r.rakutenItem.shopName || ""}${r.matchedBy === "JAN" ? "（JANで一致）" : ""}`;
         wrap.appendChild(shop);
         if (r.modelMatch === false) wrap.appendChild(rakutenSearchLink(p));
