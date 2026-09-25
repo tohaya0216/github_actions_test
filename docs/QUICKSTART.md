@@ -46,7 +46,15 @@
 
 ## ③ 商品を判定する【あなた＋自動】（1セラー数分）
 
-1. Keepaのセラー検索にseller_idを入れ、出品商品をCSVでダウンロード
+1. KeepaでそのセラーのCSVを作る
+   - Keepaの「Data」→「Product Finder」（商品検索）を開き、出品者（Seller ID）の欄に
+     seller_idを入れて検索し、結果の表を「Export」でCSVにする
+     （画面の名前は多少違う可能性がある。迷ったらスクリーンショットをClaudeに見せる）
+   - 余裕があれば、同じ画面で「Amazon本体の出品なし」「新品出品者数3以上」
+     「過去1か月の購入数3以上」の条件も付けておくと、見込みのない商品が最初から除かれ、
+     照合が速くなる
+   - 出力する列に「Model」「Product Codes: EAN」「Referral Fee %」「FBA Pick&Pack Fee」
+     「Bought in past month」「New Offer Count」が含まれていると、判定が正確になる
 2. 照合ツールを開く：`https://tohaya0216.github.io/github_actions_test/phase0-kit/rakuten-check/`
 3. 「このCSVのセラー名」にセラー名を入れ、CSVを読み込んで「楽天で照合して判定する」
 4. 数分待つと、A（有望）／B（要確認）／C（見送り）の一覧と、セラー評価の目安が出る
