@@ -266,4 +266,13 @@ test("画面とプログラムのバージョンがそろっている", () => {
   assert.ok(html.includes(`logic.js?v=${v}`) && html.includes(`app.js?v=${v}`), "scriptの?v=がTOOL_VERSIONと違う");
 });
 
+test("楽天で探す語はブランド名＋型番、次に型番だけ", () => {
+  assert.deepStrictEqual(L.buildSearchKeywords({ brand: "BOSS", model: "DS-1" }), ["BOSS DS-1", "DS-1"]);
+  assert.deepStrictEqual(L.buildSearchKeywords({ brand: "ノーブランド", model: "AB-12" }), ["AB-12"]);
+  assert.deepStrictEqual(L.buildSearchKeywords({ brand: "", model: "AB-12" }), ["AB-12"]);
+  assert.deepStrictEqual(L.buildSearchKeywords({ brand: "CASIO", model: "CASIO-F91W" }), ["CASIO-F91W"]);
+  assert.deepStrictEqual(L.buildSearchKeywords({ brand: "BOSS", model: null }), []);
+  assert.strictEqual(L.maxRakutenPrice(8000), 8000);
+});
+
 console.log("すべて成功");

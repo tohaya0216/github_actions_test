@@ -3,7 +3,7 @@
 (function (root) {
   // 画面に表示するバージョン。変更したら index.html の meta と script の ?v= も同じ値にする
   // （test_logic.js が食い違いを検出する）。
-  const TOOL_VERSION = "2026.09.25-6";
+  const TOOL_VERSION = "2026.09.25-7";
 
   const CONFIG = {
     DEFAULT_REFERRAL_FEE_RATE: 0.15,
@@ -21,6 +21,8 @@
     MIN_RAKUTEN_PRICE_RATIO: 0.3,
     // 楽天の価格がAmazonのこの比率未満なら、別商品・付属品・セット数違いを疑ってA判定にしない。
     SUSPICIOUS_PRICE_RATIO: 0.5,
+    // Amazon価格より高い楽天の商品は仕入れても利益が出ないので、検索の段階で除く。
+    MAX_RAKUTEN_PRICE_RATIO: 1.0,
   };
 
   // 商品名にこれらを含むものは、型番が一致しても本体ではなく付属品・部品・中古とみなす。
@@ -42,6 +44,27 @@
       .filter((it) => !minPrice || Number(it.itemPrice) >= minPrice)
       .filter((it) => !looksLikeAccessory(it.itemName))
       .sort((a, b) => Number(a.itemPrice) - Number(b.itemPrice));
+  }
+
+  function maxRakutenPrice(amazonPrice) {
+    return amazonPrice ? Math.ceil(amazonPrice * CONFIG.MAX_RAKUTEN_PRICE_RATIO) : 0;
+  }
+
+  // 楽天で検索する語の順番。型番だけだと楽天が「DS」「1」のように細かく分けて検索し、
+  // 無関係な商品で結果が埋まる（2026-09-25、BOSS DS-1・CASIO F-91Wで発覚）。
+  // まずブランド名＋型番で探し、見つからなければ型番だけで探す。
+  const GENERIC_BRANDS = ["ノーブランド", "ノーブランド品", "generic", "unbranded", "no brand", "nobrand", "no-brand"];
+  function buildSearchKeywords(p) {
+    const keywords = [];
+    const brand = String(p.brand || "").normalize("NFKC").trim();
+    const model = String(p.model || "").trim();
+    if (!model) return keywords;
+    const brandUsable =
+      brand && !GENERIC_BRANDS.includes(brand.toLowerCase()) &&
+      !normalizeForMatch(model).includes(normalizeForMatch(brand));
+    if (brandUsable) keywords.push(`${brand} ${model}`);
+    keywords.push(model);
+    return keywords;
   }
 
   function minRakutenPrice(amazonPrice) {
@@ -507,6 +530,8 @@
     pickRakutenMatchByJan,
     looksLikeAccessory,
     minRakutenPrice,
+    maxRakutenPrice,
+    buildSearchKeywords,
     parseJan,
     suggestSellerRating,
     aggregateResults,
