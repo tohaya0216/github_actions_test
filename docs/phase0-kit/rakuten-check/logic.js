@@ -3,7 +3,7 @@
 (function (root) {
   // 画面に表示するバージョン。変更したら index.html の meta と script の ?v= も同じ値にする
   // （test_logic.js が食い違いを検出する）。
-  const TOOL_VERSION = "2026.09.25-11";
+  const TOOL_VERSION = "2026.09.26-1";
 
   const CONFIG = {
     DEFAULT_REFERRAL_FEE_RATE: 0.15,
@@ -155,12 +155,12 @@
     model: ["model", "モデル", "型番"],
     partNumber: ["part number", "部品番号", "品番"],
     brand: ["brand", "ブランド"],
-    buyBoxPrice: ["buy box: current", "buy box 🚚: current", "カート: 現在", "buy box current"],
+    buyBoxPrice: ["buy box: current", "buy box 🚚: current", "カート: 現在", "buy box current", "buy box: 現在"],
     newPrice: ["new: current", "新品: 現在"],
     amazonPrice: ["amazon: current", "amazon: 現在"],
-    offerCount: ["new offer count: current", "新品出品者数: 現在", "offer count: current"],
-    offerCountAvg90: ["new offer count: 90 days avg", "新品出品者数: 90日平均"],
-    boughtPastMonth: ["bought in past month", "過去1か月の購入数", "過去1ヶ月"],
+    offerCount: ["new offer count: current", "新品出品者数: 現在", "offer count: current", "新品アイテム数: 現在"],
+    offerCountAvg90: ["new offer count: 90 days avg", "新品出品者数: 90日平均", "新品アイテム数: 90 日平均"],
+    boughtPastMonth: ["bought in past month", "過去1か月の購入数", "過去1ヶ月", "先月の購入"],
     referralFeePct: ["referral fee %", "販売手数料 %", "referral fee"],
     fbaFee: ["fba pick&pack fee", "fba fee", "fba手数料", "fba pick"],
     ean: ["product codes: ean", "ean", "jan"],
