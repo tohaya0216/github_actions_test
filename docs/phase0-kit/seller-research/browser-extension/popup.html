@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>セラーウォッチ検出</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        width: 320px;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 13px;
+        margin: 12px 0 8px;
+      }
+      h1:first-child {
+        margin-top: 0;
+      }
+      button {
+        margin-right: 6px;
+        margin-bottom: 6px;
+        cursor: pointer;
+      }
+      .settings-row {
+        margin-bottom: 8px;
+        font-size: 12px;
+      }
+      label {
+        display: block;
+        margin-bottom: 2px;
+        color: #555;
+      }
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 6px;
+      }
+      input[type="number"] {
+        width: 60px;
+      }
+      .hint {
+        font-size: 11px;
+        color: #666;
+        margin: 0 0 8px;
+      }
+      #connection-status {
+        font-size: 12px;
+        margin-top: 4px;
+      }
+      .due-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 8px;
+        font-size: 12px;
+      }
+      .due-list li {
+        border-bottom: 1px solid #eee;
+        padding: 6px 0;
+      }
+      .due-meta {
+        color: #666;
+        font-size: 11px;
+      }
+      .due-actions {
+        margin-top: 4px;
+      }
+      .due-actions button,
+      .due-actions select {
+        font-size: 11px;
+        margin: 0 4px 0 0;
+      }
+      #due-status {
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>今日見るセラー（定点観測）</h1>
+    <p class="hint">
+      Watchlistから、見直しの時期が来たセラーを出します
+      （S/Aランクは14日ごとに新着出品を確認、全セラーは90日ごとに評価し直す）。
+    </p>
+    <button id="load-due">リストを更新</button>
+    <div id="due-status"></div>
+    <div id="due-lists"></div>
+
+    <h1>共有データストアの設定</h1>
+    <p class="hint">
+      PC・Kiwi Browser・ブックマークレットで判定履歴・監視リストを共有する
+      ためのAirtable設定。手順は
+      <code>airtable/README.md</code>参照。
+    </p>
+    <div class="settings-row">
+      <label for="airtable-base-id">Base ID</label>
+      <input type="text" id="airtable-base-id" placeholder="appXXXXXXXXXXXXXX" />
+      <label for="airtable-token">Personal Access Token</label>
+      <input type="password" id="airtable-token" placeholder="patXXXXXXXXXXXXXX..." />
+      <button id="save-api">保存</button>
+      <button id="test-api">接続テスト</button>
+      <div id="connection-status"></div>
+    </div>
+
+    <h1>判定条件（評価数レンジ）</h1>
+    <div class="settings-row">
+      最小 <input type="number" id="min-rating" /> 〜 最大
+      <input type="number" id="max-rating" />
+      <button id="save-settings">保存</button>
+    </div>
+
+    <h1>その他</h1>
+    <p class="hint">
+      検出済み履歴をリセットすると、既に「今回は追加しない」等で無視した
+      セラーも次回また判定対象になります（共有データストア全体に反映されます）。
+    </p>
+    <button id="reset-seen">検出済みセラー履歴をリセット</button>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

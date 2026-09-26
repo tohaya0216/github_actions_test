@@ -1,0 +1,5 @@
+asin,product_name,rakuten_price,point_rebate_rate,amazon_price,referral_fee_rate,fba_fee,estimated_monthly_sales,seller_count,seller_count_spike,amazon_itself_selling,is_famous_brand,research_minutes,notes
+B0EXAMPLE1,【サンプル】洗濯洗剤リフィル4個セット,2980,0.10,4980,0.15,588,8,5,no,no,no,6,ダミーデータ。実際の商品調査結果に置き換えて使う
+B0EXAMPLE2,【サンプル】圧力鍋パッキン3個セット,3480,0.14,5480,0.15,650,4,7,no,no,no,5,15-3のケース2に相当するダミー例
+B0EXAMPLE3,【サンプル】有名ブランド調理器具,3000,0.10,6000,0.15,600,10,4,no,no,yes,4,有名ブランド品のためCに落ちる想定のダミー例
+B0EXAMPLE4,【サンプル】出品者数が少ない商品,2000,0.10,4000,0.15,300,10,2,no,no,no,3,出品者数2人のためメーカー直接出品を警戒しCに落ちる想定のダミー例
