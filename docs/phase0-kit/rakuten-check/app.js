@@ -534,4 +534,5 @@
   })();
 
   restore();
+  window._swLoadCsv = (text, name) => onCsvText(text, name || "KeepaExport.csv");
 })();
